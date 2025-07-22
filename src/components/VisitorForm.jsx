@@ -108,12 +108,6 @@ const VisitorForm = () => {
     setOtp('');
     setConfirmationResult(null);
     
-    setTimeout(() => {
-      setMessage({ 
-        type: 'success', 
-        text: `OTP ${newOtpEnabled ? 'enabled' : 'disabled'} and preference saved!` 
-      });
-    }, 100);
   };
 
   // Camera Functions - Back camera only
@@ -337,7 +331,7 @@ const VisitorForm = () => {
     formData.append('captureMethod', capturedImage ? 'camera' : 'upload');
 
     try {
-      const response = await axios.post('http://localhost:5001/api/visitors/upload', formData, {
+      const response = await axios.post('https://visitor-backend-hwq5.onrender.com/api/visitors/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -492,14 +486,14 @@ const VisitorForm = () => {
 
       {step === 3 && (
         <div className="space-y-4">
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          {/* <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center text-blue-800">
               <span className="font-medium">📱 Phone: +91{mobileNumber}</span>
               <span className="ml-2 text-sm">
                 {otpEnabled ? '✅ Verified' : '⚠️ Not Verified'}
               </span>
             </div>
-          </div>
+          </div> */}
 
           {/* Camera Section */}
           {!cameraMode && !capturedImage && (
