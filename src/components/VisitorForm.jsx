@@ -328,7 +328,7 @@ const VisitorForm = () => {
     formData.append('mobileNumber', mobileNumber);
     formData.append('visitingCard', file);
     formData.append('otpVerified', otpEnabled ? 'true' : 'false');
-    formData.append('captureMethod', capturedImage ? 'camera' : 'upload');
+    formData.append('captureMethod', capturedImage ? 'camera' : 'upload')
 
     try {
       const response = await axios.post('https://visitor-backend-hwq5.onrender.com/api/visitors/upload', formData, {
