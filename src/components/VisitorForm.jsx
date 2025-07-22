@@ -1,34 +1,34 @@
-import { useState, useEffect, useRef } from 'react';
-import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
-import axios from 'axios';
-import { auth } from '../firebase';
+import { useState, useEffect, useRef } from "react";
+import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import axios from "axios";
+import { auth } from "../firebase";
 
 const VisitorForm = () => {
   const [step, setStep] = useState(1);
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [otp, setOtp] = useState('');
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [otp, setOtp] = useState("");
   const [file, setFile] = useState(null);
   const [confirmationResult, setConfirmationResult] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  
+  const [message, setMessage] = useState({ type: "", text: "" });
+
   // Initialize OTP toggle from localStorage
   const [otpEnabled, setOtpEnabled] = useState(() => {
     try {
-      const stored = localStorage.getItem('visitorFormOtpEnabled');
+      const stored = localStorage.getItem("visitorFormOtpEnabled");
       return stored !== null ? JSON.parse(stored) : true; // Default to true if not set
     } catch (error) {
-      console.warn('Failed to read OTP preference from localStorage:', error);
+      console.warn("Failed to read OTP preference from localStorage:", error);
       return true; // Default fallback
     }
   });
-  
+
   // Camera states
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
-  const [facingMode, setFacingMode] = useState('environment');
-  
+  const [facingMode, setFacingMode] = useState("environment");
+
   const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -36,10 +36,10 @@ const VisitorForm = () => {
   // Save OTP preference to localStorage whenever it changes
   useEffect(() => {
     try {
-      localStorage.setItem('visitorFormOtpEnabled', JSON.stringify(otpEnabled));
+      localStorage.setItem("visitorFormOtpEnabled", JSON.stringify(otpEnabled));
       console.log(`OTP preference saved: ${otpEnabled}`);
     } catch (error) {
-      console.warn('Failed to save OTP preference to localStorage:', error);
+      console.warn("Failed to save OTP preference to localStorage:", error);
     }
   }, [otpEnabled]);
 
@@ -50,24 +50,37 @@ const VisitorForm = () => {
     const setupRecaptcha = () => {
       try {
         if (!recaptchaVerifier.current) {
-          recaptchaVerifier.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            'size': 'normal',
-            'callback': (response) => {
-              console.log("reCAPTCHA verified:", response);
-            },
-            'expired-callback': () => {
-              console.log("reCAPTCHA expired");
-              setMessage({ type: 'error', text: 'reCAPTCHA expired. Please refresh the page.' });
-            },
-            'error-callback': (error) => {
-              console.error("reCAPTCHA error:", error);
-              setMessage({ type: 'error', text: 'reCAPTCHA error. Please refresh the page.' });
+          recaptchaVerifier.current = new RecaptchaVerifier(
+            auth,
+            "recaptcha-container",
+            {
+              size: "normal",
+              callback: (response) => {
+                console.log("reCAPTCHA verified:", response);
+              },
+              "expired-callback": () => {
+                console.log("reCAPTCHA expired");
+                setMessage({
+                  type: "error",
+                  text: "reCAPTCHA expired. Please refresh the page.",
+                });
+              },
+              "error-callback": (error) => {
+                console.error("reCAPTCHA error:", error);
+                setMessage({
+                  type: "error",
+                  text: "reCAPTCHA error. Please refresh the page.",
+                });
+              },
             }
-          });
+          );
         }
       } catch (error) {
         console.error("Error setting up reCAPTCHA:", error);
-        setMessage({ type: 'error', text: 'Failed to setup verification. Please refresh the page.' });
+        setMessage({
+          type: "error",
+          text: "Failed to setup verification. Please refresh the page.",
+        });
       }
     };
 
@@ -89,7 +102,7 @@ const VisitorForm = () => {
   useEffect(() => {
     return () => {
       if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream.getTracks().forEach((track) => track.stop());
       }
     };
   }, [cameraStream]);
@@ -104,16 +117,18 @@ const VisitorForm = () => {
   const handleOtpToggle = () => {
     const newOtpEnabled = !otpEnabled;
     setOtpEnabled(newOtpEnabled);
-    setMessage({ type: '', text: '' });
+    setMessage({ type: "", text: "" });
     setStep(1);
-    setOtp('');
+    setOtp("");
     setConfirmationResult(null);
-    
+
     // Show feedback message about preference being saved
     setTimeout(() => {
-      setMessage({ 
-        type: 'success', 
-        text: `OTP ${newOtpEnabled ? 'enabled' : 'disabled'} and preference saved!` 
+      setMessage({
+        type: "success",
+        text: `OTP ${
+          newOtpEnabled ? "enabled" : "disabled"
+        } and preference saved!`,
       });
     }, 100);
   };
@@ -121,79 +136,79 @@ const VisitorForm = () => {
   // Camera Functions
   const startCamera = async () => {
     try {
-      setMessage({ type: '', text: '' });
-      
+      setMessage({ type: "", text: "" });
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: facingMode,
           width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
+          height: { ideal: 720 },
+        },
       });
-      
+
       setCameraStream(stream);
       setCameraMode(true);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
-      
-      setMessage({ type: 'success', text: 'Camera started successfully!' });
+
+      setMessage({ type: "success", text: "Camera started successfully!" });
     } catch (error) {
-      console.error('Error accessing camera:', error);
-      let errorMessage = 'Failed to access camera. ';
-      
-      if (error.name === 'NotAllowedError') {
-        errorMessage += 'Please allow camera permissions.';
-      } else if (error.name === 'NotFoundError') {
-        errorMessage += 'No camera found on this device.';
-      } else if (error.name === 'NotSupportedError') {
-        errorMessage += 'Camera not supported on this browser.';
+      console.error("Error accessing camera:", error);
+      let errorMessage = "Failed to access camera. ";
+
+      if (error.name === "NotAllowedError") {
+        errorMessage += "Please allow camera permissions.";
+      } else if (error.name === "NotFoundError") {
+        errorMessage += "No camera found on this device.";
+      } else if (error.name === "NotSupportedError") {
+        errorMessage += "Camera not supported on this browser.";
       } else {
-        errorMessage += 'Please try again.';
+        errorMessage += "Please try again.";
       }
-      
-      setMessage({ type: 'error', text: errorMessage });
+
+      setMessage({ type: "error", text: errorMessage });
     }
   };
 
   const stopCamera = () => {
     if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
     }
     setCameraMode(false);
     setCapturedImage(null);
-    setMessage({ type: '', text: '' });
+    setMessage({ type: "", text: "" });
   };
 
   const switchCamera = async () => {
-    const newFacingMode = facingMode === 'environment' ? 'user' : 'environment';
+    const newFacingMode = facingMode === "environment" ? "user" : "environment";
     setFacingMode(newFacingMode);
-    
+
     if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
+      cameraStream.getTracks().forEach((track) => track.stop());
     }
-    
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: newFacingMode,
           width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
+          height: { ideal: 720 },
+        },
       });
-      
+
       setCameraStream(stream);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
       }
     } catch (error) {
-      console.error('Error switching camera:', error);
-      setMessage({ type: 'error', text: 'Failed to switch camera.' });
+      console.error("Error switching camera:", error);
+      setMessage({ type: "error", text: "Failed to switch camera." });
     }
   };
 
@@ -201,97 +216,114 @@ const VisitorForm = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      
+      const ctx = canvas.getContext("2d");
+
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      
+
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      
-      canvas.toBlob((blob) => {
-        const file = new File([blob], `visiting_card_${Date.now()}.jpg`, {
-          type: 'image/jpeg'
-        });
-        
-        setFile(file);
-        setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
-        setMessage({ type: 'success', text: 'Image captured successfully!' });
-      }, 'image/jpeg', 0.8);
+
+      canvas.toBlob(
+        (blob) => {
+          const file = new File([blob], `visiting_card_${Date.now()}.jpg`, {
+            type: "image/jpeg",
+          });
+
+          setFile(file);
+          setCapturedImage(canvas.toDataURL("image/jpeg", 0.8));
+          setMessage({ type: "success", text: "Image captured successfully!" });
+        },
+        "image/jpeg",
+        0.8
+      );
     }
   };
 
   const retakePhoto = () => {
     setCapturedImage(null);
     setFile(null);
-    setMessage({ type: '', text: '' });
+    setMessage({ type: "", text: "" });
   };
 
   // Handle proceed without OTP
   const handleProceedWithoutOtp = () => {
     if (!isValidPhoneNumber(mobileNumber)) {
-      setMessage({ type: 'error', text: 'Please enter a valid 10-digit mobile number.' });
+      setMessage({
+        type: "error",
+        text: "Please enter a valid 10-digit mobile number.",
+      });
       return;
     }
-    
-    setMessage({ type: 'success', text: 'Proceeding without OTP verification.' });
+
+    setMessage({
+      type: "success",
+      text: "Proceeding without OTP verification.",
+    });
     setStep(3);
   };
 
   const handleSendOtp = async () => {
     if (!isValidPhoneNumber(mobileNumber)) {
-      setMessage({ type: 'error', text: 'Please enter a valid 10-digit mobile number.' });
+      setMessage({
+        type: "error",
+        text: "Please enter a valid 10-digit mobile number.",
+      });
       return;
     }
 
     setLoading(true);
-    setMessage({ type: '', text: '' });
-    
+    setMessage({ type: "", text: "" });
+
     try {
       const formattedNumber = `+91${mobileNumber}`;
       console.log("Sending OTP to:", formattedNumber);
-      
+
       if (!recaptchaVerifier.current) {
-        throw new Error('reCAPTCHA not initialized. Please refresh the page.');
+        throw new Error("reCAPTCHA not initialized. Please refresh the page.");
       }
 
       const confirmation = await signInWithPhoneNumber(
-        auth, 
-        formattedNumber, 
+        auth,
+        formattedNumber,
         recaptchaVerifier.current
       );
-      
+
       setConfirmationResult(confirmation);
       console.log("OTP sent successfully:", confirmation);
-      
-      setMessage({ type: 'success', text: 'OTP has been sent successfully!' });
+
+      setMessage({ type: "success", text: "OTP has been sent successfully!" });
       setStep(2);
     } catch (error) {
       console.error("Error sending OTP:", error);
-      
-      let errorMessage = 'Failed to send OTP. ';
-      if (error.code === 'auth/invalid-phone-number') {
-        errorMessage += 'Invalid phone number format.';
-      } else if (error.code === 'auth/missing-phone-number') {
-        errorMessage += 'Phone number is missing.';
-      } else if (error.code === 'auth/quota-exceeded') {
-        errorMessage += 'SMS quota exceeded. Try again later.';
-      } else if (error.code === 'auth/captcha-check-failed') {
-        errorMessage += 'Please complete the reCAPTCHA verification.';
+
+      let errorMessage = "Failed to send OTP. ";
+      if (error.code === "auth/invalid-phone-number") {
+        errorMessage += "Invalid phone number format.";
+      } else if (error.code === "auth/missing-phone-number") {
+        errorMessage += "Phone number is missing.";
+      } else if (error.code === "auth/quota-exceeded") {
+        errorMessage += "SMS quota exceeded. Try again later.";
+      } else if (error.code === "auth/captcha-check-failed") {
+        errorMessage += "Please complete the reCAPTCHA verification.";
       } else {
-        errorMessage += error.message || 'Please try again.';
+        errorMessage += error.message || "Please try again.";
       }
-      
-      setMessage({ type: 'error', text: errorMessage });
-      
+
+      setMessage({ type: "error", text: errorMessage });
+
       if (recaptchaVerifier.current) {
         try {
           recaptchaVerifier.current.clear();
-          recaptchaVerifier.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            'size': 'normal',
-            'callback': (response) => {
-              console.log("reCAPTCHA verified:", response);
+          recaptchaVerifier.current = new RecaptchaVerifier(
+            auth,
+            "recaptcha-container",
+            {
+              size: "normal",
+              callback: (response) => {
+                console.log("reCAPTCHA verified:", response);
+              },
             }
-          });
+          );
         } catch (resetError) {
           console.error("Error resetting reCAPTCHA:", resetError);
         }
@@ -303,34 +335,39 @@ const VisitorForm = () => {
 
   const handleVerifyOtp = async () => {
     if (!otp || otp.length !== 6) {
-      setMessage({ type: 'error', text: 'Please enter a valid 6-digit OTP.' });
+      setMessage({ type: "error", text: "Please enter a valid 6-digit OTP." });
       return;
     }
 
     setLoading(true);
-    setMessage({ type: '', text: '' });
-    
+    setMessage({ type: "", text: "" });
+
     try {
       if (!confirmationResult) {
-        throw new Error('No confirmation result found. Please request OTP again.');
+        throw new Error(
+          "No confirmation result found. Please request OTP again."
+        );
       }
-      
+
       await confirmationResult.confirm(otp);
-      setMessage({ type: 'success', text: 'Phone number verified successfully!' });
+      setMessage({
+        type: "success",
+        text: "Phone number verified successfully!",
+      });
       setStep(3);
     } catch (error) {
       console.error("Error verifying OTP:", error);
-      
-      let errorMessage = 'Invalid OTP. ';
-      if (error.code === 'auth/invalid-verification-code') {
-        errorMessage += 'Please check the code and try again.';
-      } else if (error.code === 'auth/code-expired') {
-        errorMessage += 'Code has expired. Please request a new one.';
+
+      let errorMessage = "Invalid OTP. ";
+      if (error.code === "auth/invalid-verification-code") {
+        errorMessage += "Please check the code and try again.";
+      } else if (error.code === "auth/code-expired") {
+        errorMessage += "Code has expired. Please request a new one.";
       } else {
-        errorMessage += error.message || 'Please try again.';
+        errorMessage += error.message || "Please try again.";
       }
-      
-      setMessage({ type: 'error', text: errorMessage });
+
+      setMessage({ type: "error", text: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -339,59 +376,71 @@ const VisitorForm = () => {
   const handleFileUpload = async (e) => {
     e.preventDefault();
     if (!file) {
-      setMessage({ type: 'error', text: 'Please capture an image or select a file to upload.' });
+      setMessage({
+        type: "error",
+        text: "Please capture an image or select a file to upload.",
+      });
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setMessage({ type: 'error', text: 'File size should be less than 5MB.' });
+      setMessage({ type: "error", text: "File size should be less than 5MB." });
       return;
     }
 
-    if (!file.type.startsWith('image/')) {
-      setMessage({ type: 'error', text: 'Please select a valid image file.' });
+    if (!file.type.startsWith("image/")) {
+      setMessage({ type: "error", text: "Please select a valid image file." });
       return;
     }
 
     setLoading(true);
-    setMessage({ type: '', text: '' });
+    setMessage({ type: "", text: "" });
 
     const formData = new FormData();
-    formData.append('mobileNumber', mobileNumber);
-    formData.append('visitingCard', file);
-    formData.append('otpVerified', otpEnabled ? 'true' : 'false');
-    formData.append('captureMethod', cameraMode || capturedImage ? 'camera' : 'upload');
+    formData.append("mobileNumber", mobileNumber);
+    formData.append("visitingCard", file);
+    formData.append("otpVerified", otpEnabled ? "true" : "false");
+    formData.append(
+      "captureMethod",
+      cameraMode || capturedImage ? "camera" : "upload"
+    );
 
     try {
-      const response = await axios.post('http://localhost:5001/api/visitors/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 30000,
-      });
-      
-      setMessage({ type: 'success', text: response.data.message });
-      
+      const response = await axios.post(
+        "https://visitor-backend-hwq5.onrender.com/api/visitors/upload",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 30000,
+        }
+      );
+
+      setMessage({ type: "success", text: response.data.message });
+
       if (cameraStream) {
-        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream.getTracks().forEach((track) => track.stop());
       }
-      
+
       setTimeout(() => {
         setStep(1);
-        setMobileNumber('');
-        setOtp('');
+        setMobileNumber("");
+        setOtp("");
         setFile(null);
         setConfirmationResult(null);
-        setMessage({ type: '', text: '' });
+        setMessage({ type: "", text: "" });
         setCameraMode(false);
         setCapturedImage(null);
         setCameraStream(null);
       }, 3000);
     } catch (error) {
-      console.error('Error uploading file:', error);
-      setMessage({ 
-        type: 'error', 
-        text: error.response?.data?.message || 'File upload failed. Please try again.' 
+      console.error("Error uploading file:", error);
+      setMessage({
+        type: "error",
+        text:
+          error.response?.data?.message ||
+          "File upload failed. Please try again.",
       });
     } finally {
       setLoading(false);
@@ -401,25 +450,34 @@ const VisitorForm = () => {
   // Clear localStorage function (for debugging/admin use)
   const clearOtpPreference = () => {
     try {
-      localStorage.removeItem('visitorFormOtpEnabled');
+      localStorage.removeItem("visitorFormOtpEnabled");
       setOtpEnabled(true); // Reset to default
-      setMessage({ type: 'success', text: 'OTP preference cleared and reset to default!' });
+      setMessage({
+        type: "success",
+        text: "OTP preference cleared and reset to default!",
+      });
     } catch (error) {
-      console.warn('Failed to clear OTP preference:', error);
+      console.warn("Failed to clear OTP preference:", error);
     }
   };
 
   return (
     <div className="bg-white p-8 rounded-lg shadow-lg max-w-md mx-auto">
-      <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">Visitor Verification</h1>
-      
+      <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
+        Visitor Verification
+      </h1>
+
       {/* OTP Toggle with localStorage indication */}
       <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-gray-700">OTP Verification</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              OTP Verification
+            </h3>
             <p className="text-xs text-gray-500 mt-1">
-              {otpEnabled ? 'Phone verification required' : 'Skip phone verification'}
+              {otpEnabled
+                ? "Phone verification required"
+                : "Skip phone verification"}
             </p>
             {/* <p className="text-xs text-green-600 mt-1">
               💾 Preference saved automatically
@@ -436,39 +494,52 @@ const VisitorForm = () => {
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
           </label>
         </div>
-        
+
         {/* {!otpEnabled && (
           <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
             ⚠️ Skipping OTP reduces security. Use only for testing.
           </div>
         )} */}
-        
+
         {/* Debug/Admin section - you can remove this in production */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-2 pt-2 border-t border-gray-200">
-            <button
-              onClick={clearOtpPreference}
-              className="text-xs text-gray-500 hover:text-gray-700 underline"
-              title="Clear stored preference (dev only)"
-            >
-              🗑️ Reset preference
-            </button>
-          </div>
-        )}
+
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <button
+            onClick={clearOtpPreference}
+            className="text-xs text-gray-500 hover:text-gray-700 underline"
+            title="Clear stored preference (dev only)"
+          >
+            🗑️ Reset preference
+          </button>
+        </div>
       </div>
-      
+
       {/* reCAPTCHA container - only show when OTP is enabled */}
-      {otpEnabled && <div id="recaptcha-container" className="mb-4 flex justify-center"></div>}
-      
+      {otpEnabled && (
+        <div
+          id="recaptcha-container"
+          className="mb-4 flex justify-center"
+        ></div>
+      )}
+
       {message.text && (
-        <div className={`p-3 rounded-md mb-4 text-center ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+        <div
+          className={`p-3 rounded-md mb-4 text-center ${
+            message.type === "success"
+              ? "bg-green-100 text-green-800"
+              : "bg-red-100 text-red-800"
+          }`}
+        >
           {message.text}
         </div>
       )}
 
       {step === 1 && (
         <div className="space-y-4">
-          <label htmlFor="mobile" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="mobile"
+            className="block text-sm font-medium text-gray-700"
+          >
             Enter Mobile Number
           </label>
           <div className="flex items-center">
@@ -479,29 +550,31 @@ const VisitorForm = () => {
               type="tel"
               id="mobile"
               value={mobileNumber}
-              onChange={(e) => setMobileNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              onChange={(e) =>
+                setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))
+              }
               className="w-full p-3 border border-gray-300 rounded-r-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               placeholder="9876543210"
               disabled={loading}
               maxLength="10"
             />
           </div>
-          
+
           {otpEnabled ? (
-            <button 
-              onClick={handleSendOtp} 
-              disabled={loading || !isValidPhoneNumber(mobileNumber)} 
+            <button
+              onClick={handleSendOtp}
+              disabled={loading || !isValidPhoneNumber(mobileNumber)}
               className="w-full bg-indigo-600 text-white py-3 rounded-md font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 transition duration-300"
             >
-              {loading ? 'Sending...' : 'Send OTP'}
+              {loading ? "Sending..." : "Send OTP"}
             </button>
           ) : (
-            <button 
-              onClick={handleProceedWithoutOtp} 
-              disabled={loading || !isValidPhoneNumber(mobileNumber)} 
+            <button
+              onClick={handleProceedWithoutOtp}
+              disabled={loading || !isValidPhoneNumber(mobileNumber)}
               className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 disabled:bg-green-300 transition duration-300"
             >
-              {loading ? 'Processing...' : 'Proceed Without OTP'}
+              {loading ? "Processing..." : "Proceed Without OTP"}
             </button>
           )}
         </div>
@@ -509,32 +582,37 @@ const VisitorForm = () => {
 
       {step === 2 && otpEnabled && (
         <div className="space-y-4">
-          <label htmlFor="otp" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="otp"
+            className="block text-sm font-medium text-gray-700"
+          >
             Enter OTP
           </label>
           <input
             type="text"
             id="otp"
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onChange={(e) =>
+              setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
             className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center text-lg tracking-widest"
             placeholder="123456"
             disabled={loading}
             maxLength="6"
           />
           <div className="flex space-x-2">
-            <button 
-              onClick={() => setStep(1)} 
+            <button
+              onClick={() => setStep(1)}
               className="flex-1 bg-gray-500 text-white py-3 rounded-md font-semibold hover:bg-gray-600 transition duration-300"
             >
               Back
             </button>
-            <button 
-              onClick={handleVerifyOtp} 
-              disabled={loading || otp.length !== 6} 
+            <button
+              onClick={handleVerifyOtp}
+              disabled={loading || otp.length !== 6}
               className="flex-1 bg-indigo-600 text-white py-3 rounded-md font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 transition duration-300"
             >
-              {loading ? 'Verifying...' : 'Verify OTP'}
+              {loading ? "Verifying..." : "Verify OTP"}
             </button>
           </div>
         </div>
@@ -557,7 +635,7 @@ const VisitorForm = () => {
               <label className="block text-sm font-medium text-gray-700">
                 Capture or Upload Visiting Card
               </label>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -565,18 +643,47 @@ const VisitorForm = () => {
                   disabled={loading}
                   className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-400 hover:bg-indigo-50 transition duration-300 disabled:opacity-50"
                 >
-                  <svg className="w-8 h-8 text-indigo-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <svg
+                    className="w-8 h-8 text-indigo-500 mb-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
                   </svg>
-                  <span className="text-sm font-medium text-indigo-700">📷 Camera</span>
+                  <span className="text-sm font-medium text-indigo-700">
+                    📷 Camera
+                  </span>
                 </button>
-                
+
                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition duration-300 cursor-pointer">
-                  <svg className="w-8 h-8 text-green-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  <svg
+                    className="w-8 h-8 text-green-500 mb-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                    />
                   </svg>
-                  <span className="text-sm font-medium text-green-700">📁 Upload</span>
+                  <span className="text-sm font-medium text-green-700">
+                    📁 Upload
+                  </span>
                   <input
                     type="file"
                     accept="image/*"
@@ -600,36 +707,71 @@ const VisitorForm = () => {
                   className="w-full h-64 object-cover"
                 />
                 <canvas ref={canvasRef} className="hidden" />
-                
+
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center space-x-4">
                   <button
                     onClick={switchCamera}
                     className="p-3 bg-white bg-opacity-20 backdrop-blur-sm rounded-full text-white hover:bg-opacity-30 transition duration-300"
                     title="Switch Camera"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                      />
                     </svg>
                   </button>
-                  
+
                   <button
                     onClick={captureImage}
                     className="p-4 bg-white bg-opacity-90 rounded-full text-gray-800 hover:bg-opacity-100 transition duration-300 shadow-lg"
                     title="Capture Image"
                   >
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0118.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <svg
+                      className="w-8 h-8"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0118.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
                     </svg>
                   </button>
-                  
+
                   <button
                     onClick={stopCamera}
                     className="p-3 bg-red-500 bg-opacity-80 backdrop-blur-sm rounded-full text-white hover:bg-opacity-90 transition duration-300"
                     title="Close Camera"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
                     </svg>
                   </button>
                 </div>
@@ -644,9 +786,9 @@ const VisitorForm = () => {
                 Captured Image
               </label>
               <div className="relative">
-                <img 
-                  src={capturedImage} 
-                  alt="Captured visiting card" 
+                <img
+                  src={capturedImage}
+                  alt="Captured visiting card"
                   className="w-full max-h-64 object-cover rounded-lg border"
                 />
                 <button
@@ -654,8 +796,18 @@ const VisitorForm = () => {
                   className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition duration-300"
                   title="Retake Photo"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                    />
                   </svg>
                 </button>
               </div>
@@ -669,19 +821,31 @@ const VisitorForm = () => {
                 Selected File
               </label>
               <div className="relative">
-                <img 
-                  src={URL.createObjectURL(file)} 
-                  alt="Preview" 
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt="Preview"
                   className="w-full max-h-64 object-cover rounded-lg border"
                 />
-                <p className="text-sm text-gray-500 mt-2 text-center">{file.name}</p>
+                <p className="text-sm text-gray-500 mt-2 text-center">
+                  {file.name}
+                </p>
                 <button
                   onClick={() => setFile(null)}
                   className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition duration-300"
                   title="Remove File"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -691,22 +855,22 @@ const VisitorForm = () => {
           {/* Submit Form */}
           <form onSubmit={handleFileUpload} className="space-y-4 pt-4">
             <div className="flex space-x-2">
-              <button 
+              <button
                 type="button"
                 onClick={() => {
                   stopCamera();
                   otpEnabled ? setStep(2) : setStep(1);
-                }} 
+                }}
                 className="flex-1 bg-gray-500 text-white py-3 rounded-md font-semibold hover:bg-gray-600 transition duration-300"
               >
                 Back
               </button>
-              <button 
-                type="submit" 
-                disabled={loading || !file} 
+              <button
+                type="submit"
+                disabled={loading || !file}
                 className="flex-1 bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 disabled:bg-green-300 transition duration-300"
               >
-                {loading ? 'Uploading...' : 'Submit Details'}
+                {loading ? "Uploading..." : "Submit Details"}
               </button>
             </div>
           </form>
