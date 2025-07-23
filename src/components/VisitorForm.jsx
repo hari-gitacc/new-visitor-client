@@ -38,6 +38,7 @@ const VisitorForm = () => {
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [flashSupported, setFlashSupported] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const cameraTimeoutRef = useRef(null); // Ref for camera timeout
 
   const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
@@ -127,11 +128,14 @@ const VisitorForm = () => {
     };
   }, [otpEnabled]);
 
-  // Cleanup camera stream
+  // Cleanup camera stream and timeout
   useEffect(() => {
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      if (cameraTimeoutRef.current) {
+        clearTimeout(cameraTimeoutRef.current);
       }
     };
   }, [cameraStream]);
@@ -197,146 +201,123 @@ const VisitorForm = () => {
 
   // Camera Functions - with front/back switching and proper initialization
   const startCamera = async (preferredFacingMode = "environment") => {
+    setMessage({ type: "info", text: "Starting camera..." });
+    setVideoReady(false);
+    setCameraMode(true); // Set camera mode to true to show loading overlay
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    setCapturedImage(null); // Clear any previously captured image
+
+    // Set a timeout for camera initialization
+    cameraTimeoutRef.current = setTimeout(() => {
+      if (!videoReady) {
+        setMessage({
+          type: "error",
+          text: "Camera initialization timed out. Please check permissions and try again.",
+        });
+        stopCamera(); // Stop attempts
+      }
+    }, 15000); // 15 seconds timeout
+
+    console.log(`Attempting to start camera with facing mode: ${preferredFacingMode}`);
+
+    let stream;
     try {
-      setMessage({ type: "", text: "" });
-      setVideoReady(false);
+      // Attempt 1: Most lenient constraints first (any video stream)
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log("Camera stream obtained with most lenient (video: true) constraints");
 
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
+      // Now, try to apply preferred facing mode if supported by the stream
+      const videoTrack = stream.getVideoTracks()[0];
+      const capabilities = videoTrack.getCapabilities();
+
+      if (capabilities.facingMode && capabilities.facingMode.includes(preferredFacingMode)) {
+        await videoTrack.applyConstraints({ facingMode: preferredFacingMode });
+        setFacingMode(preferredFacingMode);
+        console.log(`Applied preferred facing mode: ${preferredFacingMode}`);
+      } else {
+        // If preferred facing mode not available, determine actual facing mode
+        const settings = videoTrack.getSettings();
+        setFacingMode(settings.facingMode || "unknown");
+        setMessage({ type: "info", text: `Preferred camera (${preferredFacingMode}) not available, using default.` });
+        setTimeout(() => setMessage({ type: "", text: "" }), 3000);
       }
 
-      console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
-
-      // MOST LENIENT CONSTRAINTS FIRST for maximum compatibility
-      let constraints = {
-        video: {
-          facingMode: { ideal: preferredFacingMode },
-        },
-      };
-
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log("Camera stream obtained successfully with most lenient constraints");
-      } catch (error) {
-        console.error("Most lenient constraints failed, trying common ideal ones:", error);
-        setMessage({ type: "info", text: `Failed with lenient camera: ${error.name}. Trying common ideal settings...` });
-
-        // Fallback 1: Common ideal resolution with preferred facing mode
-        constraints = {
-          video: {
-            facingMode: { ideal: preferredFacingMode },
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-            aspectRatio: { ideal: 16 / 9 },
-          },
-        };
-
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log("Fallback 1 camera stream obtained successfully");
-        } catch (fallbackError) {
-          console.error("Fallback 1 camera constraints failed, trying any camera:", fallbackError);
-          setMessage({ type: "info", text: `Failed with specific camera: ${fallbackError.name}. Trying any available camera without specific facing...` });
-
-          // Fallback 2: Any available camera, no facing mode, no specific resolution
-          constraints = {
-            video: true, // Just request any video stream
-          };
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log("Fallback 2 (any camera) stream obtained successfully");
-          } catch (lastResortError) {
-            console.error("Last resort camera access failed:", lastResortError);
-            let errorMessage = "Failed to access any camera. ";
-            if (lastResortError.name === "NotAllowedError") {
-              errorMessage += "Please ALLOW camera permissions and try again.";
-            } else if (lastResortError.name === "NotFoundError") {
-              errorMessage += "No camera found on this device.";
-            } else if (lastResortError.name === "NotReadableError") {
-              errorMessage += "Camera is in use by another application.";
-            } else if (lastResortError.name === "OverconstrainedError") {
-              errorMessage += "Device camera does not meet requested capabilities.";
-            } else {
-              errorMessage += `An unknown error occurred: ${lastResortError.name}.`;
-            }
-            setMessage({ type: "error", text: errorMessage });
-            setCameraMode(false);
-            setVideoReady(false);
-            return; // Exit if all attempts fail
-          }
-        }
-      }
-
-      setCameraStream(stream);
-      setCameraMode(true);
-      setFacingMode(preferredFacingMode); // This will set based on the first *ideal* request
-
-      // Check flash support
-      checkFlashSupport(stream);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-
-        // Handle video loading events
-        videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded");
-          videoRef.current
-            .play()
-            .then(() => {
-              console.log("Video started playing");
-              setVideoReady(true);
-              const cameraType =
-                preferredFacingMode === "environment" ? "Back" : "Front";
-              setMessage({
-                type: "success",
-                text: `${cameraType} camera ready!`,
-              });
-
-              // Clear success message after 2 seconds
-              setTimeout(() => setMessage({ type: "", text: "" }), 2000);
-            })
-            .catch((error) => {
-              console.error("Error playing video:", error);
-              setMessage({
-                type: "error",
-                text: "Failed to start camera preview. Check permissions and try again.",
-              });
-            });
-        };
-
-        videoRef.current.onerror = (error) => {
-          console.error("Video element error:", error);
-          setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
-        };
-      }
-    } catch (finalError) {
-      // This catch block handles errors if no stream could be obtained from any attempt
-      console.error("Final camera access attempt failed (outer catch):", finalError);
+    } catch (error) {
+      console.error("Initial camera access failed:", error);
       let errorMessage = "Failed to access camera. ";
-      if (finalError.name === "NotAllowedError") {
+      if (error.name === "NotAllowedError") {
         errorMessage += "Please ALLOW camera permissions and try again.";
-      } else if (finalError.name === "NotFoundError") {
+      } else if (error.name === "NotFoundError") {
         errorMessage += "No camera found on this device.";
-      } else if (finalError.name === "NotSupportedError") {
-        errorMessage += "Camera not supported on this browser.";
-      } else if (finalError.name === "NotReadableError") {
+      } else if (error.name === "NotReadableError") {
         errorMessage += "Camera is in use by another application.";
-      } else if (finalError.name === "OverconstrainedError") {
+      } else if (error.name === "OverconstrainedError") {
         errorMessage += "Device camera does not meet requested capabilities.";
       } else {
-        errorMessage += `An unexpected error occurred: ${finalError.name}.`;
+        errorMessage += `An unexpected error occurred: ${error.name}.`;
       }
       setMessage({ type: "error", text: errorMessage });
       setCameraMode(false);
       setVideoReady(false);
+      clearTimeout(cameraTimeoutRef.current);
+      return; // Exit if initial attempt fails
+    }
+
+    setCameraStream(stream);
+
+    // Check flash support (must be done after stream is obtained)
+    checkFlashSupport(stream);
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+
+      videoRef.current.onloadedmetadata = () => {
+        console.log("Video metadata loaded");
+        videoRef.current
+          .play()
+          .then(() => {
+            console.log("Video started playing");
+            setVideoReady(true);
+            clearTimeout(cameraTimeoutRef.current); // Clear timeout on success
+            const currentCameraType = videoRef.current.srcObject.getVideoTracks()[0].getSettings().facingMode || 'default';
+            setMessage({
+              type: "success",
+              text: `${currentCameraType === 'environment' ? 'Back' : currentCameraType === 'user' ? 'Front' : 'Default'} camera ready!`,
+            });
+            setTimeout(() => setMessage({ type: "", text: "" }), 2000);
+          })
+          .catch((error) => {
+            console.error("Error playing video:", error);
+            setMessage({
+              type: "error",
+              text: "Failed to start camera preview. Check permissions and try again.",
+            });
+            clearTimeout(cameraTimeoutRef.current);
+          });
+      };
+
+      videoRef.current.onerror = (error) => {
+        console.error("Video element error:", error);
+        setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
+        clearTimeout(cameraTimeoutRef.current);
+      };
     }
   };
 
 
   const switchCamera = async () => {
-    const newFacingMode = facingMode === "environment" ? "user" : "environment";
-    console.log(`Switching camera from ${facingMode} to ${newFacingMode}`);
+    // Determine the new facing mode based on what's currently active (might not be what was requested)
+    const currentSettings = cameraStream?.getVideoTracks()[0]?.getSettings();
+    const currentFacingMode = currentSettings?.facingMode || "environment"; // Default if not found
+
+    // Find the other facing mode
+    const newFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+
+    console.log(`Switching camera from ${currentFacingMode} to ${newFacingMode}`);
 
     // Reset flash when switching cameras
     setFlashEnabled(false);
@@ -353,6 +334,9 @@ const VisitorForm = () => {
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
+    }
+    if (cameraTimeoutRef.current) {
+        clearTimeout(cameraTimeoutRef.current);
     }
     setCameraMode(false);
     setCapturedImage(null);
@@ -378,7 +362,10 @@ const VisitorForm = () => {
       canvas.height = video.videoHeight;
 
       // For front camera, flip the image horizontally
-      if (facingMode === "user") {
+      // Get the actual current facing mode from the active stream's settings
+      const currentFacingModeFromStream = cameraStream?.getVideoTracks()[0]?.getSettings()?.facingMode || facingMode;
+
+      if (currentFacingModeFromStream === "user") {
         ctx.scale(-1, 1);
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         ctx.scale(-1, 1); // Reset scale
@@ -391,7 +378,7 @@ const VisitorForm = () => {
         (blob) => {
           if (blob) {
             const timestamp = Date.now();
-            const cameraType = facingMode === "environment" ? "back" : "front";
+            const cameraType = currentFacingModeFromStream === "environment" ? "back" : "front";
             const file = new File(
               [blob],
               `visiting_card_${cameraType}_${timestamp}.jpg`,
