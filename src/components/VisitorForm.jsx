@@ -200,14 +200,13 @@ const VisitorForm = () => {
       setMessage({ type: "", text: "" });
       setVideoReady(false);
 
-      // Stop any existing stream
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
       }
 
       console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
 
-      // MOST LENIENT CONSTRAINTS FIRST for maximum compatibility
+      // NEW: ABSOLUTE MOST LENIENT CONSTRAINTS FIRST
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
@@ -217,16 +216,16 @@ const VisitorForm = () => {
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log("Camera stream obtained successfully with lenient constraints");
+        console.log("Camera stream obtained successfully with most lenient constraints");
       } catch (error) {
-        console.error("Lenient constraints failed, trying more specific ones:", error);
-        setMessage({ type: "info", text: `Failed with lenient camera: ${error.name}. Trying specific settings...` });
+        console.error("Most lenient constraints failed, trying common ideal ones:", error);
+        setMessage({ type: "info", text: `Failed with lenient camera: ${error.name}. Trying common ideal settings...` });
 
-        // Fallback 1: Preferred facing mode with ideal resolution
+        // Fallback 1: Common ideal resolution with preferred facing mode
         constraints = {
           video: {
             facingMode: { ideal: preferredFacingMode },
-            width: { ideal: 1280, min: 640 },
+            width: { ideal: 1280, min: 640 }, // Reintroducing common resolutions
             height: { ideal: 720, min: 480 },
             aspectRatio: { ideal: 16 / 9 },
           },
@@ -236,19 +235,16 @@ const VisitorForm = () => {
           stream = await navigator.mediaDevices.getUserMedia(constraints);
           console.log("Fallback 1 camera stream obtained successfully");
         } catch (fallbackError) {
-          console.error("Fallback 1 camera constraints failed:", fallbackError);
-          setMessage({ type: "info", text: `Failed with specific camera: ${fallbackError.name}. Trying any available camera...` });
+          console.error("Fallback 1 camera constraints failed, trying any camera:", fallbackError);
+          setMessage({ type: "info", text: `Failed with specific camera: ${fallbackError.name}. Trying any available camera without specific facing...` });
 
-          // Fallback 2: Any available camera with ideal resolution
+          // Fallback 2: Any available camera, no facing mode, no specific resolution
           constraints = {
-            video: {
-              width: { ideal: 1280, min: 640 },
-              height: { ideal: 720, min: 480 },
-            },
+            video: true, // Just request any video stream
           };
           try {
             stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log("Fallback 2 camera stream obtained successfully");
+            console.log("Fallback 2 (any camera) stream obtained successfully");
           } catch (lastResortError) {
             console.error("Last resort camera access failed:", lastResortError);
             let errorMessage = "Failed to access any camera. ";
@@ -259,9 +255,9 @@ const VisitorForm = () => {
             } else if (lastResortError.name === "NotReadableError") {
               errorMessage += "Camera is in use by another application.";
             } else if (lastResortError.name === "OverconstrainedError") {
-              errorMessage += "Camera not supported by device's capabilities.";
+              errorMessage += "Device camera does not meet requested capabilities.";
             } else {
-              errorMessage += `Error: ${lastResortError.name}. Check permissions & try again.`;
+              errorMessage += `An unknown error occurred: ${lastResortError.name}.`;
             }
             setMessage({ type: "error", text: errorMessage });
             setCameraMode(false);
@@ -273,16 +269,13 @@ const VisitorForm = () => {
 
       setCameraStream(stream);
       setCameraMode(true);
-      setFacingMode(preferredFacingMode);
+      setFacingMode(preferredFacingMode); // This will set based on the first *ideal* request
 
       // Check flash support
       checkFlashSupport(stream);
 
-      // Properly setup video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-
-        // Handle video loading events
         videoRef.current.onloadedmetadata = () => {
           console.log("Video metadata loaded");
           videoRef.current
@@ -296,8 +289,6 @@ const VisitorForm = () => {
                 type: "success",
                 text: `${cameraType} camera ready!`,
               });
-
-              // Clear success message after 2 seconds
               setTimeout(() => setMessage({ type: "", text: "" }), 2000);
             })
             .catch((error) => {
@@ -308,15 +299,13 @@ const VisitorForm = () => {
               });
             });
         };
-
         videoRef.current.onerror = (error) => {
           console.error("Video element error:", error);
           setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
         };
       }
     } catch (finalError) {
-      // This catch block handles errors if no stream could be obtained from any attempt
-      console.error("Final camera access attempt failed:", finalError);
+      console.error("Final camera access attempt failed (outer catch):", finalError);
       let errorMessage = "Failed to access camera. ";
       if (finalError.name === "NotAllowedError") {
         errorMessage += "Please ALLOW camera permissions and try again.";
@@ -329,7 +318,7 @@ const VisitorForm = () => {
       } else if (finalError.name === "OverconstrainedError") {
         errorMessage += "Device camera does not meet requested capabilities.";
       } else {
-        errorMessage += `An unknown error occurred: ${finalError.name}.`;
+        errorMessage += `An unexpected error occurred: ${finalError.name}.`;
       }
       setMessage({ type: "error", text: errorMessage });
       setCameraMode(false);
