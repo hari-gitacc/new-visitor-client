@@ -842,11 +842,13 @@ const VisitorForm = () => {
                 </div>
 
                 {/* Flash indicator */}
-                {flashSupported && facingMode === 'environment' && (
-                  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
-                    Flash ON
-                  </div>
-                )}
+
+{flashSupported && facingMode === 'environment' && flashEnabled && (
+  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
+    Flash ON
+  </div>
+)}
+
 
                 {/* Camera Controls */}
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
