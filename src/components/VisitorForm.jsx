@@ -1,8 +1,12 @@
+// visitors/frontend/src/components/VisitorForm.jsx
+
 import { useState, useEffect, useRef } from "react";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import axios from "axios";
 import { auth } from "../firebase";
 import { RotateCw, Zap, ZapOff } from "lucide-react";
+
+// Get backend URL from environment variable
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL;
 
 const VisitorForm = () => {
@@ -203,11 +207,10 @@ const VisitorForm = () => {
 
       console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
 
-      // Enhanced constraints for visiting card capture (16:9 aspect ratio)
-      // Changed to 'exact' to prioritize the specified camera
+      // Changed from 'exact' to 'ideal' for better compatibility across devices
       let constraints = {
         video: {
-          facingMode: { exact: preferredFacingMode }, // Changed from ideal to exact
+          facingMode: { ideal: preferredFacingMode },
           width: { ideal: 1920, min: 1280 },
           height: { ideal: 1080, min: 720 },
           aspectRatio: { ideal: 16 / 9 },
@@ -219,8 +222,10 @@ const VisitorForm = () => {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         console.log("Camera stream obtained successfully");
       } catch (error) {
-        console.log("Preferred camera constraints failed, trying fallback...");
-        // Fallback with simpler constraints
+        console.error("Primary camera constraints failed:", error);
+        setMessage({ type: "error", text: `Failed to open camera: ${error.name}. Trying simpler options...` });
+
+        // Fallback 1: simpler constraints with preferredFacingMode
         constraints = {
           video: {
             facingMode: preferredFacingMode,
@@ -231,16 +236,36 @@ const VisitorForm = () => {
 
         try {
           stream = await navigator.mediaDevices.getUserMedia(constraints);
+          console.log("Fallback 1 camera stream obtained successfully");
         } catch (fallbackError) {
-          console.log("Fallback with any camera...");
-          // Last resort - any camera
+          console.error("Fallback 1 camera constraints failed:", fallbackError);
+          setMessage({ type: "error", text: `Failed to open camera with simpler constraints: ${fallbackError.name}. Trying any available camera...` });
+
+          // Fallback 2: any camera
           constraints = {
             video: {
               width: { ideal: 1280, min: 640 },
               height: { ideal: 720, min: 480 },
             },
           };
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log("Fallback 2 camera stream obtained successfully");
+          } catch (lastResortError) {
+            console.error("Last resort camera access failed:", lastResortError);
+            let errorMessage = "Failed to access any camera. ";
+            if (lastResortError.name === "NotAllowedError") {
+              errorMessage += "Please allow camera permissions and try again.";
+            } else if (lastResortError.name === "NotFoundError") {
+              errorMessage += "No camera found on this device.";
+            } else {
+              errorMessage += "Check permissions and try again.";
+            }
+            setMessage({ type: "error", text: errorMessage });
+            setCameraMode(false);
+            setVideoReady(false);
+            return;
+          }
         }
       }
 
@@ -277,39 +302,36 @@ const VisitorForm = () => {
               console.error("Error playing video:", error);
               setMessage({
                 type: "error",
-                text: "Failed to start camera preview",
+                text: "Failed to start camera preview. Check permissions.",
               });
             });
         };
 
         videoRef.current.onerror = (error) => {
           console.error("Video element error:", error);
-          setMessage({ type: "error", text: "Camera preview error" });
+          setMessage({ type: "error", text: "Camera preview error." });
         };
       }
-    } catch (error) {
-      console.error("Error accessing camera:", error);
+    } catch (finalError) {
+      console.error("Error accessing camera (outside fallbacks):", finalError);
       let errorMessage = "Failed to access camera. ";
-
-      if (error.name === "NotAllowedError") {
+      if (finalError.name === "NotAllowedError") {
         errorMessage += "Please allow camera permissions and try again.";
-      } else if (error.name === "NotFoundError") {
+      } else if (finalError.name === "NotFoundError") {
         errorMessage += "No camera found on this device.";
-      } else if (error.name === "NotSupportedError") {
+      } else if (finalError.name === "NotSupportedError") {
         errorMessage += "Camera not supported on this browser.";
-      } else if (error.name === "OverconstrainedError") {
-        // Specific message for exact constraint failure
-        errorMessage +=
-          "The requested camera (back camera) is not available or does not meet requirements. Trying generic camera.";
+      } else if (finalError.name === "OverconstrainedError") {
+        errorMessage += "Camera constraints not supported by device.";
       } else {
         errorMessage += "Please check camera permissions and try again.";
       }
-
       setMessage({ type: "error", text: errorMessage });
       setCameraMode(false);
       setVideoReady(false);
     }
   };
+
 
   const switchCamera = async () => {
     const newFacingMode = facingMode === "environment" ? "user" : "environment";
@@ -541,16 +563,16 @@ const VisitorForm = () => {
     formData.append("captureMethod", capturedImage ? "camera" : "upload");
 
     try {
-        const response = await axios.post(
-            `${BACKEND_API_URL}/visitors/upload`, // Modified URL to use the environment variable
-            formData,
-            {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                },
-                timeout: 30000,
-            }
-        );
+      const response = await axios.post(
+        `${BACKEND_API_URL}/visitors/upload`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 30000,
+        }
+      );
 
       setMessage({ type: "success", text: response.data.message });
 
@@ -585,17 +607,15 @@ const VisitorForm = () => {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg max-w-lg mx-auto">
-      {" "}
-      {/* Increased max width */}
-      <h1 className="text-2xl font-bold text-center text-gray-800 mb-6">
+    <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm mx-auto sm:max-w-md md:p-8">
+      <h1 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-6">
         Visitor Verification
       </h1>
       {/* OTP Toggle */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+      <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-gray-700">
+            <h3 className="text-base font-semibold text-gray-700">
               OTP Verification
             </h3>
             <p className="text-xs text-gray-500 mt-1">
@@ -604,7 +624,6 @@ const VisitorForm = () => {
                 : "Skip phone verification"}
             </p>
             <p className="text-xs text-green-600 mt-1">
-              {/* This emoji looks like a square box */}
               Preference saved automatically
             </p>
           </div>
@@ -616,25 +635,20 @@ const VisitorForm = () => {
               className="sr-only peer"
               disabled={loading}
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
           </label>
         </div>
       </div>
-      {/* reCAPTCHA container */}
-      {otpEnabled && (
-        <div
-          id="recaptcha-container"
-          className="mb-4 flex justify-center"
-        ></div>
+    </div>
       )}
       {message.text && (
         <div
-          className={`p-3 rounded-md mb-4 text-center ${
+          className={`p-3 rounded-lg mb-4 text-center text-sm font-medium ${
             message.type === "success"
-              ? "bg-green-100 text-green-800"
+              ? "bg-green-100 text-green-800 border border-green-200"
               : message.type === "info"
-              ? "bg-blue-100 text-blue-800"
-              : "bg-red-100 text-red-800"
+              ? "bg-blue-100 text-blue-800 border border-blue-200"
+              : "bg-red-100 text-red-800 border border-red-200"
           }`}
         >
           {message.text}
@@ -644,7 +658,7 @@ const VisitorForm = () => {
         <div className="space-y-4">
           <label
             htmlFor="mobile"
-            className="block text-sm font-medium text-gray-700"
+            className="block text-sm font-semibold text-gray-700 mb-1"
           >
             Enter Mobile Number
           </label>
@@ -659,7 +673,7 @@ const VisitorForm = () => {
               onChange={(e) =>
                 setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))
               }
-              className="w-full p-3 border border-gray-300 rounded-r-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              className="w-full p-3 border border-gray-300 rounded-r-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
               placeholder="9876543210"
               disabled={loading}
               maxLength="10"
@@ -670,7 +684,7 @@ const VisitorForm = () => {
             <button
               onClick={handleSendOtp}
               disabled={loading || !isValidPhoneNumber(mobileNumber)}
-              className="w-full bg-indigo-600 text-white py-3 rounded-md font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 transition duration-300"
+              className="w-full bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               {loading ? "Sending..." : "Send OTP"}
             </button>
@@ -678,7 +692,7 @@ const VisitorForm = () => {
             <button
               onClick={handleProceedWithoutOtp}
               disabled={loading || !isValidPhoneNumber(mobileNumber)}
-              className="w-full bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 disabled:bg-green-300 transition duration-300"
+              className="w-full bg-green-700 text-white py-3 rounded-lg font-bold hover:bg-green-800 disabled:bg-green-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               {loading ? "Processing..." : "Proceed Without OTP"}
             </button>
@@ -689,7 +703,7 @@ const VisitorForm = () => {
         <div className="space-y-4">
           <label
             htmlFor="otp"
-            className="block text-sm font-medium text-gray-700"
+            className="block text-sm font-semibold text-gray-700 mb-1"
           >
             Enter OTP
           </label>
@@ -700,22 +714,22 @@ const VisitorForm = () => {
             onChange={(e) =>
               setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
             }
-            className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center text-lg tracking-widest"
+            className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center text-lg tracking-widest transition duration-150 ease-in-out"
             placeholder="123456"
             disabled={loading}
             maxLength="6"
           />
-          <div className="flex space-x-2">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-4">
             <button
               onClick={() => setStep(1)}
-              className="flex-1 bg-gray-500 text-white py-3 rounded-md font-semibold hover:bg-gray-600 transition duration-300"
+              className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               Back
             </button>
             <button
               onClick={handleVerifyOtp}
               disabled={loading || otp.length !== 6}
-              className="flex-1 bg-indigo-600 text-white py-3 rounded-md font-semibold hover:bg-indigo-700 disabled:bg-indigo-300 transition duration-300"
+              className="flex-1 bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               {loading ? "Verifying..." : "Verify OTP"}
             </button>
@@ -727,16 +741,16 @@ const VisitorForm = () => {
           {/* Camera Section */}
           {!cameraMode && !capturedImage && (
             <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Capture or Upload Visiting Card
               </label>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => startCamera("environment")} // Force back camera
+                  onClick={() => startCamera("environment")}
                   disabled={loading}
-                  className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-400 hover:bg-indigo-50 transition duration-300 disabled:opacity-50"
+                  className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-400 hover:bg-indigo-50 transition duration-300 disabled:opacity-50 h-32 text-indigo-700 font-semibold"
                 >
                   <svg
                     className="w-8 h-8 text-indigo-500 mb-2"
@@ -757,12 +771,12 @@ const VisitorForm = () => {
                       d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </svg>
-                  <span className="text-sm font-medium text-indigo-700">
+                  <span className="text-sm">
                     Camera
                   </span>
                 </button>
 
-                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition duration-300 cursor-pointer">
+                <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition duration-300 cursor-pointer h-32 text-green-700 font-semibold">
                   <svg
                     className="w-8 h-8 text-green-500 mb-2"
                     fill="none"
@@ -776,7 +790,7 @@ const VisitorForm = () => {
                       d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                     />
                   </svg>
-                  <span className="text-sm font-medium text-green-700">
+                  <span className="text-sm">
                     Upload
                   </span>
                   <input
@@ -798,7 +812,7 @@ const VisitorForm = () => {
                 className="relative bg-black rounded-lg overflow-hidden"
                 style={{ aspectRatio: "16/9" }}
               >
-                {/* Loading overlay - UNCOMMENTED */}
+                {/* Loading overlay */}
                 {!videoReady && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
                     <div className="text-white text-center">
@@ -816,7 +830,7 @@ const VisitorForm = () => {
                   className="w-full h-full object-cover"
                   style={{
                     transform: facingMode === "user" ? "scaleX(-1)" : "none",
-                    minHeight: "300px", // Increased height for visiting cards
+                    minHeight: "200px",
                   }}
                 />
                 <canvas ref={canvasRef} className="hidden" />
@@ -829,16 +843,16 @@ const VisitorForm = () => {
                 </div>
 
                 {/* Flash indicator */}
-                {flashEnabled && (
+                {flashSupported && facingMode === 'environment' && (
                   <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
                     Flash ON
                   </div>
                 )}
 
                 {/* Camera Controls */}
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-3">
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
                   {/* Flash Button */}
-                  {flashSupported && facingMode === 'environment' && ( // Only show flash for back camera if supported
+                  {flashSupported && facingMode === 'environment' && (
                   <button
                     onClick={toggleFlash}
                     className={`p-3 rounded-full transition duration-300 flex items-center justify-center ${
@@ -849,27 +863,27 @@ const VisitorForm = () => {
                     title={`${flashEnabled ? "Turn off" : "Turn on"} flash`}
                   >
                     {flashEnabled ? (
-                      <Zap className="w-6 h-6 text-black" />
+                      <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
                     ) : (
-                      <ZapOff className="w-6 h-6 text-black" />
+                      <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
                     )}
                   </button>
-                   )} 
+                   )}
 
                   {/* Switch Camera Button */}
                   {availableCameras.length >= 1 && (
                     <button
                       onClick={switchCamera}
                       className="
-            p-3 bg-white bg-opacity-20 backdrop-blur-sm
-            rounded-full text-white hover:bg-opacity-30
-            transition duration-300 flex items-center justify-center
-          "
+                        p-3 bg-white bg-opacity-20 backdrop-blur-sm
+                        rounded-full text-white hover:bg-opacity-30
+                        transition duration-300 flex items-center justify-center
+                      "
                       title={`Switch to ${
                         facingMode === "environment" ? "Front" : "Back"
                       } Camera`}
                     >
-                      <RotateCw className="w-6 h-6 text-black" />
+                      <RotateCw className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
                   )}
 
@@ -877,11 +891,11 @@ const VisitorForm = () => {
                   <button
                     onClick={captureImage}
                     disabled={!videoReady}
-                    className="p-4 bg-white bg-opacity-90 rounded-full text-gray-800 hover:bg-opacity-100 transition duration-300 shadow-lg disabled:opacity-50"
+                    className="p-3 sm:p-4 bg-white bg-opacity-90 rounded-full text-gray-800 hover:bg-opacity-100 transition duration-300 shadow-lg disabled:opacity-50"
                     title="Capture Image"
                   >
                     <svg
-                      className="w-8 h-8"
+                      className="w-7 h-7 sm:w-8 sm:h-8"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -891,24 +905,24 @@ const VisitorForm = () => {
                         strokeLinejoin="round"
                         strokeWidth={2}
                         d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                      />
-                    </svg>
-                  </button>
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                </button>
 
                   {/* Close Camera Button */}
                   <button
                     onClick={stopCamera}
-                    className="p-3 bg-red-500 bg-opacity-80 backdrop-blur-sm rounded-full text-white hover:bg-opacity-90 transition duration-300"
+                    className="p-3 rounded-full bg-red-500 bg-opacity-80 backdrop-blur-sm text-white hover:bg-opacity-90 transition duration-300"
                     title="Close Camera"
                   >
                     <svg
-                      className="w-6 h-6"
+                      className="w-5 h-5 sm:w-6 sm:h-6"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -929,14 +943,14 @@ const VisitorForm = () => {
           {/* Captured Image Preview */}
           {capturedImage && (
             <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Captured Image
               </label>
               <div className="relative">
                 <img
                   src={capturedImage}
                   alt="Captured visiting card"
-                  className="w-full max-h-80 object-cover rounded-lg border" // Increased height
+                  className="w-full max-h-64 sm:max-h-80 object-cover rounded-lg border"
                 />
                 <button
                   onClick={retakePhoto}
@@ -964,14 +978,14 @@ const VisitorForm = () => {
           {/* File Upload Preview */}
           {file && !capturedImage && (
             <div className="space-y-4">
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
                 Selected File
               </label>
               <div className="relative">
                 <img
                   src={URL.createObjectURL(file)}
                   alt="Preview"
-                  className="w-full max-h-80 object-cover rounded-lg border" // Increased height
+                  className="w-full max-h-64 sm:max-h-80 object-cover rounded-lg border"
                 />
                 <p className="text-sm text-gray-500 mt-2 text-center">
                   {file.name}
@@ -1001,30 +1015,28 @@ const VisitorForm = () => {
 
           {/* Submit Form */}
           <form onSubmit={handleFileUpload} className="space-y-4 pt-4">
-            <div className="flex space-x-2">
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
               <button
                 type="button"
                 onClick={() => {
                   stopCamera();
                   otpEnabled ? setStep(2) : setStep(1);
                 }}
-                className="flex-1 bg-gray-500 text-white py-3 rounded-md font-semibold hover:bg-gray-600 transition duration-300"
+                className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
               >
                 Back
               </button>
               <button
                 type="submit"
                 disabled={loading || !file}
-                className="flex-1 bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 disabled:bg-green-300 transition duration-300"
+                className="flex-1 bg-green-700 text-white py-3 rounded-lg font-bold hover:bg-green-800 disabled:bg-green-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
               >
                 {loading ? "Uploading..." : "Submit Details"}
               </button>
             </div>
           </form>
         </div>
-      )}
-    </div>
-  );
+    );
 };
 
 export default VisitorForm;
