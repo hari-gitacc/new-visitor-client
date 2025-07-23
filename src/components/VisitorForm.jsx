@@ -226,7 +226,7 @@ const VisitorForm = () => {
 
     let stream;
     try {
-      // **MODIFICATION HERE: Try preferred facing mode first**
+      // **MODIFICATION HERE: Try preferred facing mode explicitly first**
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
@@ -847,33 +847,31 @@ const VisitorForm = () => {
                     : "Front Camera"}
                 </div>
 
-                {/* Flash indicator */}
-                {flashSupported && facingMode === 'environment' && flashEnabled && (
-                  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
-                    Flash ON
-                  </div>
+                {/* Flash indicator - MODIFIED */}
+                {facingMode === 'environment' && ( // Only show flash control for back camera
+                  <button
+                    onClick={toggleFlash}
+                    disabled={!flashSupported} // Disable if not supported
+                    className={`absolute top-2 right-2 p-3 rounded-full transition duration-300 flex items-center justify-center ${
+                      flashEnabled
+                        ? "bg-yellow-500 bg-opacity-90 text-white"
+                        : "bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30"
+                    } ${!flashSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={`${flashSupported ? (flashEnabled ? "Turn off flash" : "Turn on flash") : "Flash not supported"}`}
+                  >
+                    {flashEnabled ? (
+                      <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
+                    ) : (
+                      <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
+                    )}
+                  </button>
                 )}
 
 
                 {/* Camera Controls */}
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
-                  {/* Flash Button */}
-                  {flashSupported && facingMode === 'environment' && (
-                  <button
-                    onClick={toggleFlash}
-                    className={`p-3 rounded-full transition duration-300 flex items-center justify-center ${
-                      flashEnabled
-                        ? "bg-yellow-500 bg-opacity-90 text-white"
-                        : "bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30"
-                    }`}
-                    title={`${flashEnabled ? "Turn off" : "Turn on"} flash`}
-                  >
-                    <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
-                   )}
-
-                  {/* Switch Camera Button */}
-                  {availableCameras.length >= 1 && (
+                  {/* Switch Camera Button - MODIFIED */}
+                  {availableCameras.length > 1 && ( // Only show if more than one camera is available
                     <button
                       onClick={switchCamera}
                       className="
