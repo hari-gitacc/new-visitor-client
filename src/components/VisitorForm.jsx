@@ -639,7 +639,12 @@ const VisitorForm = () => {
           </label>
         </div>
       </div>
-    </div>
+      {/* reCAPTCHA container */}
+      {otpEnabled && (
+        <div
+          id="recaptcha-container"
+          className="mb-4 flex justify-center"
+        ></div>
       )}
       {message.text && (
         <div
@@ -862,11 +867,7 @@ const VisitorForm = () => {
                     }`}
                     title={`${flashEnabled ? "Turn off" : "Turn on"} flash`}
                   >
-                    {flashEnabled ? (
-                      <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
-                    ) : (
-                      <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
-                    )}
+                    <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                    )}
 
@@ -1036,7 +1037,9 @@ const VisitorForm = () => {
             </div>
           </form>
         </div>
-    );
+      )}
+      </div>
+  );
 };
 
 export default VisitorForm;
