@@ -23,10 +23,12 @@ const VisitorForm = () => {
     }
   });
   
-  // Camera states - Fixed to back camera only
+  // Camera states - with front/back switching
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
+  const [facingMode, setFacingMode] = useState('environment'); // 'environment' = back, 'user' = front
+  const [availableCameras, setAvailableCameras] = useState([]);
   
   const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
@@ -41,6 +43,22 @@ const VisitorForm = () => {
       console.warn('Failed to save OTP preference to localStorage:', error);
     }
   }, [otpEnabled]);
+
+  // Check available cameras on component mount
+  useEffect(() => {
+    const getAvailableCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setAvailableCameras(videoDevices);
+        console.log('Available cameras:', videoDevices.length);
+      } catch (error) {
+        console.error('Error checking available cameras:', error);
+      }
+    };
+
+    getAvailableCameras();
+  }, []);
 
   // Setup reCAPTCHA only when OTP is enabled
   useEffect(() => {
@@ -107,66 +125,91 @@ const VisitorForm = () => {
     setStep(1);
     setOtp('');
     setConfirmationResult(null);
-    
   };
 
-  // Camera Functions - Back camera only
-  const startCamera = async () => {
+  // Camera Functions - with front/back switching
+  const startCamera = async (preferredFacingMode = 'environment') => {
     try {
       setMessage({ type: '', text: '' });
       
-      // Request back camera specifically
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Stop any existing stream
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+
+      console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
+      
+      // Try with specific facing mode first
+      let constraints = {
         video: {
-          facingMode: 'environment', // Always use back camera
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          facingMode: { ideal: preferredFacingMode },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 }
         }
-      });
+      };
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        console.log('Preferred camera not available, trying any camera...');
+        // Fallback to any available camera
+        constraints = {
+          video: {
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 }
+          }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      }
       
       setCameraStream(stream);
       setCameraMode(true);
+      setFacingMode(preferredFacingMode);
       
+      // Wait for video element to be ready
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        
+        // Handle video load
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(error => {
+            console.error('Error playing video:', error);
+          });
+        };
       }
       
-      setMessage({ type: 'success', text: 'Back camera started successfully!' });
+      // const cameraType = preferredFacingMode === 'environment' ? 'Back' : 'Front';
+      // setMessage({ type: 'success', text: `${cameraType} camera started successfully!` });
+      
     } catch (error) {
       console.error('Error accessing camera:', error);
-      let errorMessage = 'Failed to access back camera. ';
+      let errorMessage = 'Failed to access camera. ';
       
       if (error.name === 'NotAllowedError') {
-        errorMessage += 'Please allow camera permissions.';
+        errorMessage += 'Please allow camera permissions and try again.';
       } else if (error.name === 'NotFoundError') {
-        errorMessage += 'No back camera found on this device.';
+        errorMessage += 'No camera found on this device.';
       } else if (error.name === 'NotSupportedError') {
         errorMessage += 'Camera not supported on this browser.';
       } else if (error.name === 'OverconstrainedError') {
-        errorMessage += 'Back camera not available, trying default camera.';
-        // Fallback to any available camera
-        try {
-          const fallbackStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } }
-          });
-          setCameraStream(fallbackStream);
-          setCameraMode(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = fallbackStream;
-            videoRef.current.play();
-          }
-          setMessage({ type: 'success', text: 'Camera started (using available camera)!' });
-          return;
-        } catch (fallbackError) {
-          errorMessage += ' No camera available.';
-        }
+        errorMessage += 'Camera constraints not supported.';
       } else {
-        errorMessage += 'Please try again.';
+        errorMessage += 'Please check camera permissions and try again.';
       }
       
       setMessage({ type: 'error', text: errorMessage });
     }
+  };
+
+  const switchCamera = async () => {
+    const newFacingMode = facingMode === 'environment' ? 'user' : 'environment';
+    console.log(`Switching camera from ${facingMode} to ${newFacingMode}`);
+    
+    // Show loading state
+    setMessage({ type: 'info', text: 'Switching camera...' });
+    
+    await startCamera(newFacingMode);
   };
 
   const stopCamera = () => {
@@ -180,25 +223,39 @@ const VisitorForm = () => {
   };
 
   const captureImage = () => {
-    if (videoRef.current && canvasRef.current) {
+    if (videoRef.current && canvasRef.current && videoRef.current.readyState === 4) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       
+      // Set canvas dimensions to match video
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
+      // Draw the video frame to canvas
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
+      // Convert canvas to blob and create file
       canvas.toBlob((blob) => {
-        const file = new File([blob], `visiting_card_${Date.now()}.jpg`, {
-          type: 'image/jpeg'
-        });
-        
-        setFile(file);
-        setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
-        setMessage({ type: 'success', text: 'Image captured successfully!' });
+        if (blob) {
+          const timestamp = Date.now();
+          const cameraType = facingMode === 'environment' ? 'back' : 'front';
+          const file = new File([blob], `visiting_card_${cameraType}_${timestamp}.jpg`, {
+            type: 'image/jpeg'
+          });
+          
+          setFile(file);
+          setCapturedImage(canvas.toDataURL('image/jpeg', 0.8));
+          setMessage({ type: 'success', text: 'Image captured successfully!' });
+          
+          // Auto-stop camera after capture
+          stopCamera();
+        } else {
+          setMessage({ type: 'error', text: 'Failed to capture image. Please try again.' });
+        }
       }, 'image/jpeg', 0.8);
+    } else {
+      setMessage({ type: 'error', text: 'Camera not ready. Please wait and try again.' });
     }
   };
 
@@ -215,7 +272,6 @@ const VisitorForm = () => {
       return;
     }
     
-    // setMessage({ type: 'success', text: 'Proceeding without OTP verification.' });
     setStep(3);
   };
 
@@ -311,11 +367,6 @@ const VisitorForm = () => {
       return;
     }
 
-    // if (file.size > 5 * 1024 * 1024) {
-    //   setMessage({ type: 'error', text: 'File size should be less than 5MB.' });
-    //   return;
-    // }
-
     if (!file.type.startsWith('image/')) {
       setMessage({ type: 'error', text: 'Please select a valid image file.' });
       return;
@@ -328,7 +379,7 @@ const VisitorForm = () => {
     formData.append('mobileNumber', mobileNumber);
     formData.append('visitingCard', file);
     formData.append('otpVerified', otpEnabled ? 'true' : 'false');
-    formData.append('captureMethod', capturedImage ? 'camera' : 'upload')
+    formData.append('captureMethod', capturedImage ? 'camera' : 'upload');
 
     try {
       const response = await axios.post('https://visitor-backend-hwq5.onrender.com/api/visitors/upload', formData, {
@@ -393,19 +444,17 @@ const VisitorForm = () => {
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
           </label>
         </div>
-        
-        {/* {!otpEnabled && (
-          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-            ⚠️ Skipping OTP reduces security. Use only for testing.
-          </div>
-        )} */}
       </div>
       
       {/* reCAPTCHA container */}
       {otpEnabled && <div id="recaptcha-container" className="mb-4 flex justify-center"></div>}
       
       {message.text && (
-        <div className={`p-3 rounded-md mb-4 text-center ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+        <div className={`p-3 rounded-md mb-4 text-center ${
+          message.type === 'success' ? 'bg-green-100 text-green-800' : 
+          message.type === 'info' ? 'bg-blue-100 text-blue-800' : 
+          'bg-red-100 text-red-800'
+        }`}>
           {message.text}
         </div>
       )}
@@ -486,15 +535,6 @@ const VisitorForm = () => {
 
       {step === 3 && (
         <div className="space-y-4">
-          {/* <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center text-blue-800">
-              <span className="font-medium">📱 Phone: +91{mobileNumber}</span>
-              <span className="ml-2 text-sm">
-                {otpEnabled ? '✅ Verified' : '⚠️ Not Verified'}
-              </span>
-            </div>
-          </div> */}
-
           {/* Camera Section */}
           {!cameraMode && !capturedImage && (
             <div className="space-y-4">
@@ -505,7 +545,7 @@ const VisitorForm = () => {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={startCamera}
+                  onClick={() => startCamera('environment')}
                   disabled={loading}
                   className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-400 hover:bg-indigo-50 transition duration-300 disabled:opacity-50"
                 >
@@ -513,7 +553,7 @@ const VisitorForm = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span className="text-sm font-medium text-indigo-700">📷 Back Camera</span>
+                  <span className="text-sm font-medium text-indigo-700">📷 Camera</span>
                 </button>
                 
                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition duration-300 cursor-pointer">
@@ -533,7 +573,7 @@ const VisitorForm = () => {
             </div>
           )}
 
-          {/* Camera Preview - Back camera only */}
+          {/* Camera Preview - with front/back switching */}
           {cameraMode && !capturedImage && (
             <div className="space-y-4">
               <div className="relative bg-black rounded-lg overflow-hidden">
@@ -541,12 +581,33 @@ const VisitorForm = () => {
                   ref={videoRef}
                   autoPlay
                   playsInline
+                  muted
                   className="w-full h-64 object-cover"
+                  style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
                 />
                 <canvas ref={canvasRef} className="hidden" />
                 
-                {/* Camera Controls - No switch button */}
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center space-x-6">
+                {/* Camera info indicator */}
+                <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+                  {facingMode === 'environment' ? '📷 Back Camera' : '🤳 Front Camera'}
+                </div>
+                
+                {/* Camera Controls */}
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-4">
+                  {/* Switch Camera Button */}
+
+                    <button
+                      onClick={switchCamera}
+                      className="p-3 bg-white bg-opacity-20 backdrop-blur-sm rounded-full text-white hover:bg-opacity-30 transition duration-300 flex items-center justify-center"
+                      title={`Switch to ${facingMode === 'environment' ? 'Front' : 'Back'} Camera`}
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                
+                  
+                  {/* Capture Button */}
                   <button
                     onClick={captureImage}
                     className="p-4 bg-white bg-opacity-90 rounded-full text-gray-800 hover:bg-opacity-100 transition duration-300 shadow-lg"
@@ -558,6 +619,7 @@ const VisitorForm = () => {
                     </svg>
                   </button>
                   
+                  {/* Close Camera Button */}
                   <button
                     onClick={stopCamera}
                     className="p-3 bg-red-500 bg-opacity-80 backdrop-blur-sm rounded-full text-white hover:bg-opacity-90 transition duration-300"
