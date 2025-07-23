@@ -63,7 +63,8 @@ const VisitorForm = () => {
         );
         setAvailableCameras(videoDevices);
         console.log("Available cameras:", videoDevices.length);
-      } catch (error) {
+      }
+      catch (error) {
         console.error("Error checking available cameras:", error);
       }
     };
@@ -1039,7 +1040,7 @@ const VisitorForm = () => {
           </form>
         </div>
       )}
-      </div> 
+    </div>
   );
 };
 
