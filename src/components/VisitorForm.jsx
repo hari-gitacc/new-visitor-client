@@ -3,6 +3,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import axios from "axios";
 import { auth } from "../firebase";
 import { RotateCw, Zap, ZapOff } from "lucide-react";
+const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL;
 
 const VisitorForm = () => {
   const [step, setStep] = useState(1);
@@ -203,9 +204,10 @@ const VisitorForm = () => {
       console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
 
       // Enhanced constraints for visiting card capture (16:9 aspect ratio)
+      // Changed to 'exact' to prioritize the specified camera
       let constraints = {
         video: {
-          facingMode: { ideal: preferredFacingMode },
+          facingMode: { exact: preferredFacingMode }, // Changed from ideal to exact
           width: { ideal: 1920, min: 1280 },
           height: { ideal: 1080, min: 720 },
           aspectRatio: { ideal: 16 / 9 },
@@ -296,7 +298,9 @@ const VisitorForm = () => {
       } else if (error.name === "NotSupportedError") {
         errorMessage += "Camera not supported on this browser.";
       } else if (error.name === "OverconstrainedError") {
-        errorMessage += "Camera constraints not supported.";
+        // Specific message for exact constraint failure
+        errorMessage +=
+          "The requested camera (back camera) is not available or does not meet requirements. Trying generic camera.";
       } else {
         errorMessage += "Please check camera permissions and try again.";
       }
@@ -537,16 +541,16 @@ const VisitorForm = () => {
     formData.append("captureMethod", capturedImage ? "camera" : "upload");
 
     try {
-      const response = await axios.post(
-        "https://visitor-backend-hwq5.onrender.com/api/visitors/upload",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-          timeout: 30000,
-        }
-      );
+        const response = await axios.post(
+            `${BACKEND_API_URL}/visitors/upload`, // Modified URL to use the environment variable
+            formData,
+            {
+                headers: {
+                    "Content-Type": "multipart/form-data",
+                },
+                timeout: 30000,
+            }
+        );
 
       setMessage({ type: "success", text: response.data.message });
 
@@ -600,7 +604,8 @@ const VisitorForm = () => {
                 : "Skip phone verification"}
             </p>
             <p className="text-xs text-green-600 mt-1">
-              💾 Preference saved automatically
+              {/* This emoji looks like a square box */}
+              Preference saved automatically
             </p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -753,7 +758,7 @@ const VisitorForm = () => {
                     />
                   </svg>
                   <span className="text-sm font-medium text-indigo-700">
-                    📷 Camera
+                    Camera
                   </span>
                 </button>
 
@@ -772,7 +777,7 @@ const VisitorForm = () => {
                     />
                   </svg>
                   <span className="text-sm font-medium text-green-700">
-                    📁 Upload
+                    Upload
                   </span>
                   <input
                     type="file"
@@ -793,15 +798,15 @@ const VisitorForm = () => {
                 className="relative bg-black rounded-lg overflow-hidden"
                 style={{ aspectRatio: "16/9" }}
               >
-                {/* Loading overlay */}
-                {/* {!videoReady && (
+                {/* Loading overlay - UNCOMMENTED */}
+                {!videoReady && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
                     <div className="text-white text-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
                       <p className="text-sm">Starting camera...</p>
                     </div>
                   </div>
-                )} */}
+                )}
 
                 <video
                   ref={videoRef}
@@ -819,21 +824,21 @@ const VisitorForm = () => {
                 {/* Camera info indicator */}
                 <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
                   {facingMode === "environment"
-                    ? "📷 Back Camera"
-                    : "🤳 Front Camera"}
+                    ? "Back Camera"
+                    : "Front Camera"}
                 </div>
 
                 {/* Flash indicator */}
-                {/* {flashEnabled && ( */}
-                <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
-                  ⚡ Flash ON
-                </div>
-                {/* )} */}
+                {flashEnabled && (
+                  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
+                    Flash ON
+                  </div>
+                )}
 
                 {/* Camera Controls */}
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-3">
                   {/* Flash Button */}
-                  {/* {flashSupported && facingMode === 'environment' && ( */}
+                  {flashSupported && facingMode === 'environment' && ( // Only show flash for back camera if supported
                   <button
                     onClick={toggleFlash}
                     className={`p-3 rounded-full transition duration-300 flex items-center justify-center ${
@@ -849,7 +854,7 @@ const VisitorForm = () => {
                       <ZapOff className="w-6 h-6 text-black" />
                     )}
                   </button>
-                  {/* )} */}
+                   )} 
 
                   {/* Switch Camera Button */}
                   {availableCameras.length >= 1 && (
