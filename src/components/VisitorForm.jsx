@@ -222,49 +222,61 @@ const VisitorForm = () => {
       }
     }, 15000); // 15 seconds timeout
 
-    console.log(`Attempting to start camera with facing mode: ${preferredFacingMode}`);
+    console.log(`Attempting to start camera with preferred facing mode: ${preferredFacingMode}`);
 
     let stream;
     try {
-      // Attempt 1: Most lenient constraints first (any video stream)
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      console.log("Camera stream obtained with most lenient (video: true) constraints");
+      // **MODIFICATION HERE: Try preferred facing mode first**
+      let constraints = {
+        video: {
+          facingMode: { ideal: preferredFacingMode },
+          width: { ideal: 1280, min: 640 }, // Added some ideal resolution for better quality
+          height: { ideal: 720, min: 480 },
+          aspectRatio: { ideal: 16 / 9 },
+        },
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log(`Camera stream obtained with preferred facing mode: ${preferredFacingMode}`);
 
-      // Now, try to apply preferred facing mode if supported by the stream
-      const videoTrack = stream.getVideoTracks()[0];
-      const capabilities = videoTrack.getCapabilities();
+      // Ensure facingMode state reflects what was successfully opened
+      const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
+      setFacingMode(actualFacingMode || preferredFacingMode); // Use actual or fallback to requested
 
-      if (capabilities.facingMode && capabilities.facingMode.includes(preferredFacingMode)) {
-        await videoTrack.applyConstraints({ facingMode: preferredFacingMode });
-        setFacingMode(preferredFacingMode);
-        console.log(`Applied preferred facing mode: ${preferredFacingMode}`);
-      } else {
-        // If preferred facing mode not available, determine actual facing mode
-        const settings = videoTrack.getSettings();
-        setFacingMode(settings.facingMode || "unknown");
-        setMessage({ type: "info", text: `Preferred camera (${preferredFacingMode}) not available, using default.` });
+    } catch (initialError) {
+      console.error(`Initial attempt with preferred facing mode (${preferredFacingMode}) failed:`, initialError);
+      setMessage({ type: "info", text: `Preferred camera failed (${initialError.name}). Trying any available camera...` });
+
+      // Fallback: Try with most lenient constraints (any video stream)
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        console.log("Camera stream obtained with most lenient (video: true) constraints");
+
+        // Determine actual facing mode if successful with lenient constraint
+        const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
+        setFacingMode(actualFacingMode || "unknown"); // Set to actual or 'unknown' if not found
+        setMessage({ type: "info", text: `Using ${actualFacingMode === 'environment' ? 'back' : actualFacingMode === 'user' ? 'front' : 'default'} camera.` });
         setTimeout(() => setMessage({ type: "", text: "" }), 3000);
-      }
 
-    } catch (error) {
-      console.error("Initial camera access failed:", error);
-      let errorMessage = "Failed to access camera. ";
-      if (error.name === "NotAllowedError") {
-        errorMessage += "Please ALLOW camera permissions and try again.";
-      } else if (error.name === "NotFoundError") {
-        errorMessage += "No camera found on this device.";
-      } else if (error.name === "NotReadableError") {
-        errorMessage += "Camera is in use by another application.";
-      } else if (error.name === "OverconstrainedError") {
-        errorMessage += "Device camera does not meet requested capabilities.";
-      } else {
-        errorMessage += `An unexpected error occurred: ${error.name}.`;
+      } catch (fallbackError) {
+        console.error("Fallback camera access failed:", fallbackError);
+        let errorMessage = "Failed to access any camera. ";
+        if (fallbackError.name === "NotAllowedError") {
+          errorMessage += "Please ALLOW camera permissions and try again.";
+        } else if (fallbackError.name === "NotFoundError") {
+          errorMessage += "No camera found on this device.";
+        } else if (fallbackError.name === "NotReadableError") {
+          errorMessage += "Camera is in use by another application.";
+        } else if (fallbackError.name === "OverconstrainedError") {
+          errorMessage += "Device camera does not meet requested capabilities.";
+        } else {
+          errorMessage += `An unexpected error occurred: ${fallbackError.name}.`;
+        }
+        setMessage({ type: "error", text: errorMessage });
+        setCameraMode(false);
+        setVideoReady(false);
+        clearTimeout(cameraTimeoutRef.current);
+        return; // Exit if all attempts fail
       }
-      setMessage({ type: "error", text: errorMessage });
-      setCameraMode(false);
-      setVideoReady(false);
-      clearTimeout(cameraTimeoutRef.current);
-      return; // Exit if initial attempt fails
     }
 
     setCameraStream(stream);
