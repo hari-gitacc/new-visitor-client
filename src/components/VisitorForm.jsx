@@ -206,7 +206,7 @@ const VisitorForm = () => {
 
       console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
 
-      // NEW: ABSOLUTE MOST LENIENT CONSTRAINTS FIRST
+      // MOST LENIENT CONSTRAINTS FIRST for maximum compatibility
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
@@ -225,7 +225,7 @@ const VisitorForm = () => {
         constraints = {
           video: {
             facingMode: { ideal: preferredFacingMode },
-            width: { ideal: 1280, min: 640 }, // Reintroducing common resolutions
+            width: { ideal: 1280, min: 640 },
             height: { ideal: 720, min: 480 },
             aspectRatio: { ideal: 16 / 9 },
           },
@@ -276,6 +276,8 @@ const VisitorForm = () => {
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+
+        // Handle video loading events
         videoRef.current.onloadedmetadata = () => {
           console.log("Video metadata loaded");
           videoRef.current
@@ -289,6 +291,8 @@ const VisitorForm = () => {
                 type: "success",
                 text: `${cameraType} camera ready!`,
               });
+
+              // Clear success message after 2 seconds
               setTimeout(() => setMessage({ type: "", text: "" }), 2000);
             })
             .catch((error) => {
@@ -299,12 +303,14 @@ const VisitorForm = () => {
               });
             });
         };
+
         videoRef.current.onerror = (error) => {
           console.error("Video element error:", error);
           setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
         };
       }
     } catch (finalError) {
+      // This catch block handles errors if no stream could be obtained from any attempt
       console.error("Final camera access attempt failed (outer catch):", finalError);
       let errorMessage = "Failed to access camera. ";
       if (finalError.name === "NotAllowedError") {
@@ -842,12 +848,11 @@ const VisitorForm = () => {
                 </div>
 
                 {/* Flash indicator */}
-
-{flashSupported && facingMode === 'environment' && flashEnabled && (
-  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
-    Flash ON
-  </div>
-)}
+                {flashSupported && facingMode === 'environment' && flashEnabled && (
+                  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
+                    Flash ON
+                  </div>
+                )}
 
 
                 {/* Camera Controls */}
@@ -1033,8 +1038,8 @@ const VisitorForm = () => {
             </div>
           </form>
         </div>
-       )}
-      </div>
+      )}
+      </div> 
   );
 };
 
