@@ -207,30 +207,28 @@ const VisitorForm = () => {
 
       console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
 
-      // Changed from 'exact' to 'ideal' for better compatibility across devices
+      // MOST LENIENT CONSTRAINTS FIRST for maximum compatibility
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
-          width: { ideal: 1920, min: 1280 },
-          height: { ideal: 1080, min: 720 },
-          aspectRatio: { ideal: 16 / 9 },
         },
       };
 
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log("Camera stream obtained successfully");
+        console.log("Camera stream obtained successfully with lenient constraints");
       } catch (error) {
-        console.error("Primary camera constraints failed:", error);
-        setMessage({ type: "error", text: `Failed to open camera: ${error.name}. Trying simpler options...` });
+        console.error("Lenient constraints failed, trying more specific ones:", error);
+        setMessage({ type: "info", text: `Failed with lenient camera: ${error.name}. Trying specific settings...` });
 
-        // Fallback 1: simpler constraints with preferredFacingMode
+        // Fallback 1: Preferred facing mode with ideal resolution
         constraints = {
           video: {
-            facingMode: preferredFacingMode,
+            facingMode: { ideal: preferredFacingMode },
             width: { ideal: 1280, min: 640 },
             height: { ideal: 720, min: 480 },
+            aspectRatio: { ideal: 16 / 9 },
           },
         };
 
@@ -239,9 +237,9 @@ const VisitorForm = () => {
           console.log("Fallback 1 camera stream obtained successfully");
         } catch (fallbackError) {
           console.error("Fallback 1 camera constraints failed:", fallbackError);
-          setMessage({ type: "error", text: `Failed to open camera with simpler constraints: ${fallbackError.name}. Trying any available camera...` });
+          setMessage({ type: "info", text: `Failed with specific camera: ${fallbackError.name}. Trying any available camera...` });
 
-          // Fallback 2: any camera
+          // Fallback 2: Any available camera with ideal resolution
           constraints = {
             video: {
               width: { ideal: 1280, min: 640 },
@@ -255,16 +253,20 @@ const VisitorForm = () => {
             console.error("Last resort camera access failed:", lastResortError);
             let errorMessage = "Failed to access any camera. ";
             if (lastResortError.name === "NotAllowedError") {
-              errorMessage += "Please allow camera permissions and try again.";
+              errorMessage += "Please ALLOW camera permissions and try again.";
             } else if (lastResortError.name === "NotFoundError") {
               errorMessage += "No camera found on this device.";
+            } else if (lastResortError.name === "NotReadableError") {
+              errorMessage += "Camera is in use by another application.";
+            } else if (lastResortError.name === "OverconstrainedError") {
+              errorMessage += "Camera not supported by device's capabilities.";
             } else {
-              errorMessage += "Check permissions and try again.";
+              errorMessage += `Error: ${lastResortError.name}. Check permissions & try again.`;
             }
             setMessage({ type: "error", text: errorMessage });
             setCameraMode(false);
             setVideoReady(false);
-            return;
+            return; // Exit if all attempts fail
           }
         }
       }
@@ -302,29 +304,32 @@ const VisitorForm = () => {
               console.error("Error playing video:", error);
               setMessage({
                 type: "error",
-                text: "Failed to start camera preview. Check permissions.",
+                text: "Failed to start camera preview. Check permissions and try again.",
               });
             });
         };
 
         videoRef.current.onerror = (error) => {
           console.error("Video element error:", error);
-          setMessage({ type: "error", text: "Camera preview error." });
+          setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
         };
       }
     } catch (finalError) {
-      console.error("Error accessing camera (outside fallbacks):", finalError);
+      // This catch block handles errors if no stream could be obtained from any attempt
+      console.error("Final camera access attempt failed:", finalError);
       let errorMessage = "Failed to access camera. ";
       if (finalError.name === "NotAllowedError") {
-        errorMessage += "Please allow camera permissions and try again.";
+        errorMessage += "Please ALLOW camera permissions and try again.";
       } else if (finalError.name === "NotFoundError") {
         errorMessage += "No camera found on this device.";
       } else if (finalError.name === "NotSupportedError") {
         errorMessage += "Camera not supported on this browser.";
+      } else if (finalError.name === "NotReadableError") {
+        errorMessage += "Camera is in use by another application.";
       } else if (finalError.name === "OverconstrainedError") {
-        errorMessage += "Camera constraints not supported by device.";
+        errorMessage += "Device camera does not meet requested capabilities.";
       } else {
-        errorMessage += "Please check camera permissions and try again.";
+        errorMessage += `An unknown error occurred: ${finalError.name}.`;
       }
       setMessage({ type: "error", text: errorMessage });
       setCameraMode(false);
@@ -1037,7 +1042,7 @@ const VisitorForm = () => {
             </div>
           </form>
         </div>
-      )}
+       )}
       </div>
   );
 };
