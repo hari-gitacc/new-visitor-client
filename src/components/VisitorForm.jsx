@@ -7,7 +7,7 @@ import { auth } from "../firebase";
 import { RotateCw, Zap, ZapOff } from "lucide-react";
 
 // Get backend URL from environment variable
-const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com';
+const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com/api';
 
 const VisitorForm = () => {
   const [step, setStep] = useState(1);
@@ -587,7 +587,7 @@ const VisitorForm = () => {
 
     try {
       const response = await axios.post(
-        `https://new-visitor-backend.onrender.com/visitors/upload`,
+        `https://new-visitor-backend.onrender.com/api/visitors/upload`,
         formData,
         {
           headers: {

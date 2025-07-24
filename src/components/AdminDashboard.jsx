@@ -8,7 +8,7 @@ import { Edit, Trash2, X, Check, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Get backend URL from environment variable
-const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com';
+const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com/api';
 
 // Helper component for the Edit Modal
 const EditVisitorModal = ({ visitor, onClose, onSave, isSaving }) => {
@@ -168,7 +168,7 @@ const AdminDashboard = () => {
             }
 
             try {
-                const response = await axios.get(`https://new-visitor-backend.onrender.com/admin/visitors`, {
+                const response = await axios.get(`https://new-visitor-backend.onrender.com/api/admin/visitors`, {
                     headers: {
                         'Admin-API-Key': adminApiKey
                     }
@@ -212,7 +212,7 @@ const AdminDashboard = () => {
         if (window.confirm("Are you sure you want to delete this visitor? This action cannot be undone.")) {
             try {
                 const adminApiKey = localStorage.getItem('adminApiKey');
-                await axios.delete(`https://new-visitor-backend.onrender.com/admin/visitors/${visitorId}`, {
+                await axios.delete(`https://new-visitor-backend.onrender.com/api/admin/visitors/${visitorId}`, {
                     headers: {
                         'Admin-API-Key': adminApiKey
                     }
@@ -239,7 +239,7 @@ const AdminDashboard = () => {
         try {
             const adminApiKey = localStorage.getItem('adminApiKey');
             const response = await axios.put(
-                `https://new-visitor-backend.onrender.com/admin/visitors/${editedData._id}`,
+                `https://new-visitor-backend.onrender.com/api/admin/visitors/${editedData._id}`,
                 editedData,
                 {
                     headers: {
