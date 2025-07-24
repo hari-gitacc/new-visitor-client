@@ -687,24 +687,7 @@ const VisitorForm = () => {
       )}
       {step === 1 && (
         <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-semibold text-gray-700 mb-1"
-            >
-              Full Name (Optional)
-            </label>
-            <input
-              type="text"
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
-              placeholder="John Doe"
-              // REMOVED: required attribute
-              disabled={loading}
-            />
-          </div>
+        
           <div>
             <label
               htmlFor="personalMobile"
@@ -731,41 +714,8 @@ const VisitorForm = () => {
               />
             </div>
           </div>
-          <div>
-            <label
-              htmlFor="companyPhone"
-              className="block text-sm font-semibold text-gray-700 mb-1"
-            >
-              Company Phone Number (Optional)
-            </label>
-            <input
-              type="tel"
-              id="companyPhone"
-              value={companyPhoneNumber}
-              onChange={(e) => setCompanyPhoneNumber(e.target.value.replace(/\D/g, ""))}
-              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
-              placeholder="Optional"
-              disabled={loading}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="address"
-              className="block text-sm font-semibold text-gray-700 mb-1"
-            >
-              Address (Optional)
-            </label>
-            <textarea
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              rows="3"
-              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
-              placeholder="Building/Street, City, State, Zip"
-              disabled={loading}
-            ></textarea>
-          </div>
-
+         
+        
           {otpEnabled ? (
             <button
               onClick={handleSendOtp}
