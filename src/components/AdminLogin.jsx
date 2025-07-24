@@ -6,7 +6,7 @@ import axios from 'axios';
 import { Eye, EyeOff } from 'lucide-react';
 
 // Get backend URL from environment variable
-const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL;
+const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com';
 
 const AdminLogin = () => {
     const [username, setUsername] = useState('');
@@ -22,7 +22,7 @@ const AdminLogin = () => {
         setMessage({ type: '', text: '' });
 
         try {
-            const response = await axios.post(`${BACKEND_API_URL}/admin/login`, {
+            const response = await axios.post(`https://new-visitor-backend.onrender.com/admin/login`, {
                 username,
                 password,
             });
