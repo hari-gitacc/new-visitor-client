@@ -1,62 +1,37 @@
-// visitors/frontend/src/components/VisitorForm.jsx
-
 import { useState, useEffect, useRef } from "react";
-import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import axios from "axios";
-import { auth } from "../firebase";
 import { RotateCw, Zap, ZapOff } from "lucide-react";
 
 // Get backend URL from environment variable
-const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com/api';
+const BACKEND_API_URL = 'http://localhost:5001/api';
 
 const VisitorForm = () => {
   const [step, setStep] = useState(1);
   const [personalPhoneNumber, setPersonalPhoneNumber] = useState("");
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [companyPhoneNumber, setCompanyPhoneNumber] = useState("");
   const [address, setAddress] = useState("");
-
-  const [otp, setOtp] = useState("");
   const [file, setFile] = useState(null);
-  const [confirmationResult, setConfirmationResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [message, setMessage] = useState({ type: "", text: "" });
-
-  // Initialize OTP toggle from localStorage
-  const [otpEnabled, setOtpEnabled] = useState(() => {
-    try {
-      const stored = localStorage.getItem("visitorFormOtpEnabled");
-      return stored !== null ? JSON.parse(stored) : true;
-    } catch (error) {
-      console.warn("Failed to read OTP preference from localStorage:", error);
-      return true;
-    }
-  });
 
   // Camera states - with front/back switching and flash
   const [cameraMode, setCameraMode] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [capturedImage, setCapturedImage] = useState(null);
-  const [facingMode, setFacingMode] = useState("environment"); // 'environment' = back, 'user' = front
+  const [facingMode, setFacingMode] = useState("environment");
   const [availableCameras, setAvailableCameras] = useState([]);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [flashSupported, setFlashSupported] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
-  const cameraTimeoutRef = useRef(null); // Ref for camera timeout
+  const cameraTimeoutRef = useRef(null);
 
-  const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-
-  // Save OTP preference to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("visitorFormOtpEnabled", JSON.stringify(otpEnabled));
-      console.log(`OTP preference saved: ${otpEnabled}`);
-    } catch (error) {
-      console.warn("Failed to save OTP preference to localStorage:", error);
-    }
-  }, [otpEnabled]);
 
   // Check available cameras on component mount
   useEffect(() => {
@@ -68,69 +43,13 @@ const VisitorForm = () => {
         );
         setAvailableCameras(videoDevices);
         console.log("Available cameras:", videoDevices.length);
-      }
-      catch (error) {
+      } catch (error) {
         console.error("Error checking available cameras:", error);
       }
     };
 
     getAvailableCameras();
   }, []);
-
-  // Setup reCAPTCHA only when OTP is enabled
-  useEffect(() => {
-    if (!otpEnabled) return;
-
-    const setupRecaptcha = () => {
-      try {
-        if (!recaptchaVerifier.current) {
-          recaptchaVerifier.current = new RecaptchaVerifier(
-            auth,
-            "recaptcha-container",
-            {
-              size: "normal",
-              callback: (response) => {
-                console.log("reCAPTCHA verified:", response);
-              },
-              "expired-callback": () => {
-                console.log("reCAPTCHA expired");
-                setMessage({
-                  type: "error",
-                  text: "reCAPTCHA expired. Please refresh the page.",
-                });
-              },
-              "error-callback": (error) => {
-                console.error("reCAPTCHA error:", error);
-                setMessage({
-                  type: "error",
-                  text: "reCAPTCHA error. Please refresh the page.",
-                });
-              },
-            }
-          );
-        }
-      } catch (error) {
-        console.error("Error setting up reCAPTCHA:", error);
-        setMessage({
-          type: "error",
-          text: "Failed to setup verification. Please refresh the page.",
-        });
-      }
-    };
-
-    setupRecaptcha();
-
-    return () => {
-      if (recaptchaVerifier.current) {
-        try {
-          recaptchaVerifier.current.clear();
-          recaptchaVerifier.current = null;
-        } catch (error) {
-          console.error("Error clearing reCAPTCHA:", error);
-        }
-      }
-    };
-  }, [otpEnabled]);
 
   // Cleanup camera stream and timeout
   useEffect(() => {
@@ -150,14 +69,141 @@ const VisitorForm = () => {
     return phoneRegex.test(number);
   };
 
-  // Handle the toggle change
-  const handleOtpToggle = () => {
-    const newOtpEnabled = !otpEnabled;
-    setOtpEnabled(newOtpEnabled);
-    setMessage({ type: "", text: "" });
-    setStep(1);
-    setOtp("");
-    setConfirmationResult(null);
+  // Validate email
+  const isValidEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  // Image compression function
+  const compressImage = (file, maxWidth = 1200, quality = 0.8) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(resolve, 'image/jpeg', quality);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Handle file selection with compression
+  const handleFileSelect = async (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      setMessage({ type: "info", text: "Compressing image..." });
+      
+      try {
+        const compressedFile = await compressImage(selectedFile);
+        const finalFile = new File([compressedFile], selectedFile.name, {
+          type: 'image/jpeg'
+        });
+        
+        console.log(`Original: ${(selectedFile.size / 1024 / 1024).toFixed(2)}MB, Compressed: ${(finalFile.size / 1024 / 1024).toFixed(2)}MB`);
+        
+        setFile(finalFile);
+        setMessage({ type: "success", text: "Image compressed successfully!" });
+        setTimeout(() => setMessage({ type: "", text: "" }), 2000);
+      } catch (error) {
+        console.error('Compression failed:', error);
+        setFile(selectedFile); // Use original if compression fails
+        setMessage({ type: "info", text: "Using original image (compression failed)" });
+        setTimeout(() => setMessage({ type: "", text: "" }), 2000);
+      }
+    }
+  };
+
+  // Send welcome email
+  const sendWelcomeEmail = async () => {
+    if (!email) {
+      return;
+    }
+
+
+
+    setEmailLoading(true);
+    try {
+      const response = await axios.post(
+        `${BACKEND_API_URL}/send-welcome-email`,
+        {
+          email: email,
+          companyName: companyName
+        },
+        {
+          timeout: 10000,
+        }
+      );
+
+      console.log("Welcome email response:", response.data);
+      
+
+      if (response.data.success) {
+        setMessage({ 
+          type: "success", 
+          text: "Welcome email sent successfully! 📧" 
+        });
+        setTimeout(() => setMessage({ type: "", text: "" }), 3000);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error sending welcome email:", error);
+      setMessage({
+        type: "error",
+        text: "Failed to send welcome email, but you can continue.",
+      });
+      setTimeout(() => setMessage({ type: "", text: "" }), 3000);
+      return false;
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  // Handle proceed to next step with email sending
+  const handleProceedToNext = async () => {
+    if (!isValidPhoneNumber(personalPhoneNumber)) {
+      setMessage({
+        type: "error",
+        text: "Please enter a valid 10-digit personal mobile number.",
+      });
+      return;
+    }
+
+    // if (!name.trim()) {
+    //   setMessage({
+    //     type: "error",
+    //     text: "Please enter your name.",
+    //   });
+    //   return;
+    // }
+
+    if (!isValidEmail(email)) {
+      setMessage({
+        type: "error",
+        text: "Please enter a valid email address.",
+      });
+      return;
+    }
+
+    // Send welcome email
+    setMessage({
+      type: "info",
+      text: "Sending welcome email...",
+    });
+    
+    await sendWelcomeEmail();
+    setStep(2);
   };
 
   // Flash/Torch functionality
@@ -178,7 +224,6 @@ const VisitorForm = () => {
           text: `Flash ${!flashEnabled ? "enabled" : "disabled"}`,
         });
 
-        // Clear message after 2 seconds
         setTimeout(() => setMessage({ type: "", text: "" }), 2000);
       }
     } catch (error) {
@@ -203,38 +248,36 @@ const VisitorForm = () => {
     }
   };
 
-  // Camera Functions - with front/back switching and proper initialization
+  // Camera Functions
   const startCamera = async (preferredFacingMode = "environment") => {
     setMessage({ type: "info", text: "Starting camera..." });
     setVideoReady(false);
-    setCameraMode(true); // Set camera mode to true to show loading overlay
+    setCameraMode(true);
 
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
     }
-    setCapturedImage(null); // Clear any previously captured image
+    setCapturedImage(null);
 
-    // Set a timeout for camera initialization
     cameraTimeoutRef.current = setTimeout(() => {
       if (!videoReady) {
         setMessage({
           type: "error",
           text: "Camera initialization timed out. Please check permissions and try again.",
         });
-        stopCamera(); // Stop attempts
+        stopCamera();
       }
-    }, 15000); // 15 seconds timeout
+    }, 15000);
 
     console.log(`Attempting to start camera with preferred facing mode: ${preferredFacingMode}`);
 
     let stream;
     try {
-      // Try preferred facing mode explicitly first
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
-          width: { ideal: 1280, min: 640 }, // Added some ideal resolution for better quality
+          width: { ideal: 1280, min: 640 },
           height: { ideal: 720, min: 480 },
           aspectRatio: { ideal: 16 / 9 },
         },
@@ -242,22 +285,19 @@ const VisitorForm = () => {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       console.log(`Camera stream obtained with preferred facing mode: ${preferredFacingMode}`);
 
-      // Ensure facingMode state reflects what was successfully opened
       const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
-      setFacingMode(actualFacingMode || preferredFacingMode); // Use actual or fallback to requested
+      setFacingMode(actualFacingMode || preferredFacingMode);
 
     } catch (initialError) {
       console.error(`Initial attempt with preferred facing mode (${preferredFacingMode}) failed:`, initialError);
       setMessage({ type: "info", text: `Preferred camera failed (${initialError.name}). Trying any available camera...` });
 
-      // Fallback: Try with most lenient constraints (any video stream)
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true });
         console.log("Camera stream obtained with most lenient (video: true) constraints");
 
-        // Determine actual facing mode if successful with lenient constraint
         const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
-        setFacingMode(actualFacingMode || "unknown"); // Set to actual or 'unknown' if not found
+        setFacingMode(actualFacingMode || "unknown");
         setMessage({ type: "info", text: `Using ${actualFacingMode === 'environment' ? 'back' : actualFacingMode === 'user' ? 'front' : 'default'} camera.` });
         setTimeout(() => setMessage({ type: "", text: "" }), 3000);
 
@@ -279,13 +319,11 @@ const VisitorForm = () => {
         setCameraMode(false);
         setVideoReady(false);
         clearTimeout(cameraTimeoutRef.current);
-        return; // Exit if all attempts fail
+        return;
       }
     }
 
     setCameraStream(stream);
-
-    // Check flash support (must be done after stream is obtained)
     checkFlashSupport(stream);
 
     if (videoRef.current) {
@@ -298,7 +336,7 @@ const VisitorForm = () => {
           .then(() => {
             console.log("Video started playing");
             setVideoReady(true);
-            clearTimeout(cameraTimeoutRef.current); // Clear timeout on success
+            clearTimeout(cameraTimeoutRef.current);
             const currentCameraType = videoRef.current.srcObject.getVideoTracks()[0].getSettings().facingMode || 'default';
             setMessage({
               type: "success",
@@ -324,22 +362,15 @@ const VisitorForm = () => {
     }
   };
 
-
   const switchCamera = async () => {
-    // Determine the new facing mode based on what's currently active (might not be what was requested)
     const currentSettings = cameraStream?.getVideoTracks()[0]?.getSettings();
-    const currentFacingMode = currentSettings?.facingMode || "environment"; // Default if not found
-
-    // Find the other facing mode
+    const currentFacingMode = currentSettings?.facingMode || "environment";
     const newFacingMode = currentFacingMode === "environment" ? "user" : "environment";
 
     console.log(`Switching camera from ${currentFacingMode} to ${newFacingMode}`);
 
-    // Reset flash when switching cameras
     setFlashEnabled(false);
     setFlashSupported(false);
-
-    // Show loading state
     setMessage({ type: "info", text: "Switching camera..." });
     setVideoReady(false);
 
@@ -351,7 +382,7 @@ const VisitorForm = () => {
       cameraStream.getTracks().forEach((track) => track.stop());
     }
     if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
+      clearTimeout(cameraTimeoutRef.current);
     }
     setCameraMode(false);
     setCapturedImage(null);
@@ -359,10 +390,10 @@ const VisitorForm = () => {
     setFlashEnabled(false);
     setFlashSupported(false);
     setMessage({ type: "", text: "" });
-    setCameraStream(null); // Ensure stream is nullified to prevent re-use
+    setCameraStream(null);
   };
 
-  const captureImage = () => {
+  const captureImage = async () => {
     if (
       videoRef.current &&
       canvasRef.current &&
@@ -373,23 +404,23 @@ const VisitorForm = () => {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
 
-      // Set canvas dimensions to match video for better quality
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      // Set reasonable dimensions for faster upload
+      const maxWidth = 1200;
+      const ratio = Math.min(maxWidth / video.videoWidth, maxWidth / video.videoHeight);
+      
+      canvas.width = video.videoWidth * ratio;
+      canvas.height = video.videoHeight * ratio;
 
-      // For front camera, flip the image horizontally
-      // Get the actual current facing mode from the active stream's settings
       const currentFacingModeFromStream = cameraStream?.getVideoTracks()[0]?.getSettings()?.facingMode || facingMode;
 
       if (currentFacingModeFromStream === "user") {
         ctx.scale(-1, 1);
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-        ctx.scale(-1, 1); // Reset scale
+        ctx.scale(-1, 1);
       } else {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       }
 
-      // Convert canvas to blob and create file
       canvas.toBlob(
         (blob) => {
           if (blob) {
@@ -403,14 +434,14 @@ const VisitorForm = () => {
               }
             );
 
+            console.log(`Compressed image size: ${(blob.size / 1024 / 1024).toFixed(2)}MB`);
             setFile(file);
-            setCapturedImage(canvas.toDataURL("image/jpeg", 0.9)); // Higher quality
+            setCapturedImage(canvas.toDataURL("image/jpeg", 0.8));
             setMessage({
               type: "success",
-              text: "Image captured successfully!",
+              text: "Image captured and compressed successfully!",
             });
 
-            // Auto-stop camera after capture
             stopCamera();
           } else {
             setMessage({
@@ -420,8 +451,8 @@ const VisitorForm = () => {
           }
         },
         "image/jpeg",
-        0.9
-      ); // Higher quality
+        0.8 // Compression quality
+      );
     } else {
       setMessage({
         type: "error",
@@ -434,128 +465,6 @@ const VisitorForm = () => {
     setCapturedImage(null);
     setFile(null);
     setMessage({ type: "", text: "" });
-  };
-
-  // Handle proceed without OTP
-  const handleProceedWithoutOtp = () => {
-    if (!isValidPhoneNumber(personalPhoneNumber)) {
-      setMessage({
-        type: "error",
-        text: "Please enter a valid 10-digit personal mobile number.",
-      });
-      return;
-    }
-    // REMOVED: Name is no longer required here
-    // if (!name.trim()) {
-    //   setMessage({
-    //     type: "error",
-    //     text: "Please enter your name.",
-    //   });
-    //   return;
-    // }
-
-    setStep(3);
-  };
-
-  const handleSendOtp = async () => {
-    if (!isValidPhoneNumber(personalPhoneNumber)) {
-      setMessage({
-        type: "error",
-        text: "Please enter a valid 10-digit personal mobile number.",
-      });
-      return;
-    }
-    // REMOVED: Name is no longer required here
-    // if (!name.trim()) {
-    //   setMessage({
-    //     type: "error",
-    //     text: "Please enter your name.",
-    //   });
-    //   return;
-    // }
-
-    setLoading(true);
-    setMessage({ type: "", text: "" });
-
-    try {
-      const formattedNumber = `+91${personalPhoneNumber}`;
-      console.log("Sending OTP to:", formattedNumber);
-
-      if (!recaptchaVerifier.current) {
-        throw new Error("reCAPTCHA not initialized. Please refresh the page.");
-      }
-
-      const confirmation = await signInWithPhoneNumber(
-        auth,
-        formattedNumber,
-        recaptchaVerifier.current
-      );
-
-      setConfirmationResult(confirmation);
-      console.log("OTP sent successfully:", confirmation);
-
-      setMessage({ type: "success", text: "OTP has been sent successfully!" });
-      setStep(2);
-    } catch (error) {
-      console.error("Error sending OTP:", error);
-
-      let errorMessage = "Failed to send OTP. ";
-      if (error.code === "auth/invalid-phone-number") {
-        errorMessage += "Invalid phone number format.";
-      } else if (error.code === "auth/missing-phone-number") {
-        errorMessage += "Phone number is missing.";
-      } else if (error.code === "auth/quota-exceeded") {
-        errorMessage += "SMS quota exceeded. Try again later.";
-      } else if (error.code === "auth/captcha-check-failed") {
-        errorMessage += "Please complete the reCAPTCHA verification.";
-      } else {
-        errorMessage += error.message || "Please try again.";
-      }
-
-      setMessage({ type: "error", text: errorMessage });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otp || otp.length !== 6) {
-      setMessage({ type: "error", text: "Please enter a valid 6-digit OTP." });
-      return;
-    }
-
-    setLoading(true);
-    setMessage({ type: "", text: "" });
-
-    try {
-      if (!confirmationResult) {
-        throw new Error(
-          "No confirmation result found. Please request OTP again."
-        );
-      }
-
-      await confirmationResult.confirm(otp);
-      setMessage({
-        type: "success",
-        text: "Phone number verified successfully!",
-      });
-      setStep(3);
-    } catch (error) {
-      console.error("Error verifying OTP:", error);
-
-      let errorMessage = "Invalid OTP. ";
-      if (error.code === "auth/invalid-verification-code") {
-        errorMessage += "Please check the code and try again.";
-      } else if (error.code === "auth/code-expired") {
-        errorMessage += "Code has expired. Please request a new one.";
-      } else {
-        errorMessage += error.message || "Please try again.";
-      }
-
-      setMessage({ type: "error", text: errorMessage });
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleFileUpload = async (e) => {
@@ -574,26 +483,39 @@ const VisitorForm = () => {
     }
 
     setLoading(true);
-    setMessage({ type: "", text: "" });
+    setUploadProgress(0);
+    setMessage({ type: "info", text: "Uploading image..." });
 
     const formData = new FormData();
     formData.append("personalPhoneNumber", personalPhoneNumber);
     formData.append("name", name);
+    formData.append("email", email);
+    formData.append("companyName", companyName);
     formData.append("companyPhoneNumber", companyPhoneNumber);
     formData.append("address", address);
     formData.append("visitingCard", file);
-    formData.append("otpVerified", otpEnabled ? "true" : "false");
+    formData.append("smsVerified", "false"); // No SMS verification
     formData.append("captureMethod", capturedImage ? "camera" : "upload");
 
     try {
       const response = await axios.post(
-        `https://new-visitor-backend.onrender.com/api/visitors/upload`,
+        `${BACKEND_API_URL}/visitors/upload`,
         formData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-          timeout: 30000,
+          timeout: 60000, // Increased timeout
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setUploadProgress(percentCompleted);
+            setMessage({ 
+              type: "info", 
+              text: `Uploading... ${percentCompleted}%` 
+            });
+          }
         }
       );
 
@@ -607,17 +529,18 @@ const VisitorForm = () => {
         setStep(1);
         setPersonalPhoneNumber("");
         setName("");
+        setEmail("");
+        setCompanyName("");
         setCompanyPhoneNumber("");
         setAddress("");
-        setOtp("");
         setFile(null);
-        setConfirmationResult(null);
         setMessage({ type: "", text: "" });
         setCameraMode(false);
         setCapturedImage(null);
         setCameraStream(null);
         setVideoReady(false);
         setFlashEnabled(false);
+        setUploadProgress(0);
       }, 3000);
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -629,49 +552,16 @@ const VisitorForm = () => {
       });
     } finally {
       setLoading(false);
+      setUploadProgress(0);
     }
   };
 
   return (
     <div className="bg-white p-6 rounded-xl shadow-2xl max-w-sm mx-auto sm:max-w-md md:p-8">
       <h1 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-6">
-        Visitor Verification
+        Visitor Registration
       </h1>
-      {/* OTP Toggle */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-gray-700">
-              OTP Verification
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">
-              {otpEnabled
-                ? "Phone verification required"
-                : "Skip phone verification"}
-            </p>
-            <p className="text-xs text-green-600 mt-1">
-              Preference saved automatically
-            </p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={otpEnabled}
-              onChange={handleOtpToggle}
-              className="sr-only peer"
-              disabled={loading}
-            />
-            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-      </div>
-      {/* reCAPTCHA container */}
-      {otpEnabled && (
-        <div
-          id="recaptcha-container"
-          className="mb-4 flex justify-center"
-        ></div>
-      )}
+
       {message.text && (
         <div
           className={`p-3 rounded-lg mb-4 text-center text-sm font-medium ${
@@ -685,15 +575,27 @@ const VisitorForm = () => {
           {message.text}
         </div>
       )}
+
+      {/* Progress bar for upload */}
+      {uploadProgress > 0 && (
+        <div className="mb-4">
+          <div className="bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
       {step === 1 && (
         <div className="space-y-4">
-        
           <div>
             <label
               htmlFor="personalMobile"
               className="block text-sm font-semibold text-gray-700 mb-1"
             >
-              Personal Mobile Number
+              Personal Mobile Number <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center">
               <span className="inline-block bg-gray-200 p-3 rounded-l-md border border-r-0 border-gray-300 text-gray-600">
@@ -708,73 +610,99 @@ const VisitorForm = () => {
                 }
                 className="w-full p-3 border border-gray-300 rounded-r-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
                 placeholder="9876543210"
-                required // Keep required
-                disabled={loading}
+                required
+                disabled={loading || emailLoading}
                 maxLength="10"
               />
             </div>
           </div>
-         
-        
-          {otpEnabled ? (
-            <button
-              onClick={handleSendOtp}
-              // REMOVED: !name.trim() from disabled condition
-              disabled={loading || !isValidPhoneNumber(personalPhoneNumber)}
-              className="w-full bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
+
+
+          <div>
+            <label
+              htmlFor="companyName"
+              className="block text-sm font-semibold text-gray-700 mb-1"
             >
-              {loading ? "Sending..." : "Send OTP"}
-            </button>
-          ) : (
-            <button
-              onClick={handleProceedWithoutOtp}
-              // REMOVED: !name.trim() from disabled condition
-              disabled={loading || !isValidPhoneNumber(personalPhoneNumber)}
-              className="w-full bg-green-700 text-white py-3 rounded-lg font-bold hover:bg-green-800 disabled:bg-green-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
-            >
-              {loading ? "Processing..." : "Proceed Without OTP"}
-            </button>
-          )}
-        </div>
-      )}
-      {step === 2 && otpEnabled && (
-        <div className="space-y-4">
-          <label
-            htmlFor="otp"
-            className="block text-sm font-semibold text-gray-700 mb-1"
-          >
-            Enter OTP
-          </label>
-          <input
-            type="text"
-            id="otp"
-            value={otp}
-            onChange={(e) =>
-              setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-            }
-            className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none text-center text-lg tracking-widest transition duration-150 ease-in-out"
-            placeholder="123456"
-            disabled={loading}
-            maxLength="6"
-          />
-          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-4">
-            <button
-              onClick={() => setStep(1)}
-              className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
-            >
-              Back
-            </button>
-            <button
-              onClick={handleVerifyOtp}
-              disabled={loading || otp.length !== 6}
-              className="flex-1 bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
-            >
-              {loading ? "Verifying..." : "Verify OTP"}
-            </button>
+            </label>
+            <input
+              type="text"
+              id="companyName"
+              required
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="Your company name"
+              disabled={loading || emailLoading}
+            />
           </div>
+
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Email Address <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="your.email@example.com"
+              required
+              disabled={loading || emailLoading}
+            />
+          </div>
+
+
+          {/* <div>
+            <label
+              htmlFor="companyPhoneNumber"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Company Phone Number <span className="text-gray-500 text-xs">(Optional)</span>
+            </label>
+            <input
+              type="tel"
+              id="companyPhoneNumber"
+              value={companyPhoneNumber}
+              onChange={(e) => setCompanyPhoneNumber(e.target.value.replace(/\D/g, ""))}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="Company phone number"
+              disabled={loading || emailLoading}
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="address"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Address <span className="text-gray-500 text-xs">(Optional)</span>
+            </label>
+            <textarea
+              id="address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="Your address"
+              rows={3}
+              disabled={loading || emailLoading}
+            />
+          </div> */}
+
+          <button
+            onClick={handleProceedToNext}
+            disabled={loading || emailLoading || !isValidPhoneNumber(personalPhoneNumber)  || !isValidEmail(email)}
+            className="w-full bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
+          >
+            {emailLoading ? "Sending Welcome Email..." : loading ? "Processing..." : "Continue & Send Welcome Email"}
+          </button>
         </div>
       )}
-      {step === 3 && (
+
+      {step === 2 && (
         <div className="space-y-4">
           {/* Camera Section */}
           {!cameraMode && !capturedImage && (
@@ -809,9 +737,7 @@ const VisitorForm = () => {
                       d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </svg>
-                  <span className="text-sm">
-                    Camera
-                  </span>
+                  <span className="text-sm">Camera</span>
                 </button>
 
                 <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-green-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition duration-300 cursor-pointer h-32 text-green-700 font-semibold">
@@ -828,13 +754,11 @@ const VisitorForm = () => {
                       d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                     />
                   </svg>
-                  <span className="text-sm">
-                    Upload
-                  </span>
+                  <span className="text-sm">Upload</span>
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => setFile(e.target.files[0])}
+                    onChange={handleFileSelect}
                     className="hidden"
                     disabled={loading}
                   />
@@ -843,14 +767,13 @@ const VisitorForm = () => {
             </div>
           )}
 
-          {/* Camera Preview - Rectangular for visiting cards */}
+          {/* Camera Preview */}
           {cameraMode && !capturedImage && (
             <div className="space-y-4">
               <div
                 className="relative bg-black rounded-lg overflow-hidden"
                 style={{ aspectRatio: "16/9" }}
               >
-                {/* Loading overlay */}
                 {!videoReady && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 z-10">
                     <div className="text-white text-center">
@@ -873,18 +796,16 @@ const VisitorForm = () => {
                 />
                 <canvas ref={canvasRef} className="hidden" />
 
-                {/* Camera info indicator */}
                 <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
                   {facingMode === "environment"
                     ? "Back Camera"
                     : "Front Camera"}
                 </div>
 
-                {/* Flash indicator */}
-                {facingMode === 'environment' && ( // Only show flash control for back camera
+                {facingMode === 'environment' && (
                   <button
                     onClick={toggleFlash}
-                    disabled={!flashSupported} // Disable if not supported
+                    disabled={!flashSupported}
                     className={`absolute top-2 right-2 p-3 rounded-full transition duration-300 flex items-center justify-center ${
                       flashEnabled
                         ? "bg-yellow-500 bg-opacity-90 text-white"
@@ -900,18 +821,11 @@ const VisitorForm = () => {
                   </button>
                 )}
 
-
-                {/* Camera Controls */}
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
-                  {/* Switch Camera Button */}
-                  {availableCameras.length > 1 && ( // Only show if more than one camera is available
+                  {availableCameras.length > 1 && (
                     <button
                       onClick={switchCamera}
-                      className="
-                        p-3 bg-white bg-opacity-20 backdrop-blur-sm
-                        rounded-full text-white hover:bg-opacity-30
-                        transition duration-300 flex items-center justify-center
-                      "
+                      className="p-3 bg-white bg-opacity-20 backdrop-blur-sm rounded-full text-white hover:bg-opacity-30 transition duration-300 flex items-center justify-center"
                       title={`Switch to ${
                         facingMode === "environment" ? "Front" : "Back"
                       } Camera`}
@@ -920,7 +834,6 @@ const VisitorForm = () => {
                     </button>
                   )}
 
-                  {/* Capture Button */}
                   <button
                     onClick={captureImage}
                     disabled={!videoReady}
@@ -938,17 +851,16 @@ const VisitorForm = () => {
                         strokeLinejoin="round"
                         strokeWidth={2}
                         d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                  </svg>
-                </button>
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                    </svg>
+                  </button>
 
-                  {/* Close Camera Button */}
                   <button
                     onClick={stopCamera}
                     className="p-3 rounded-full bg-red-500 bg-opacity-80 backdrop-blur-sm text-white hover:bg-opacity-90 transition duration-300"
@@ -1021,7 +933,7 @@ const VisitorForm = () => {
                   className="w-full max-h-64 sm:max-h-80 object-cover rounded-lg border"
                 />
                 <p className="text-sm text-gray-500 mt-2 text-center">
-                  {file.name}
+                  {file.name} ({(file.size / 1024 / 1024).toFixed(2)}MB)
                 </p>
                 <button
                   onClick={() => setFile(null)}
@@ -1053,7 +965,7 @@ const VisitorForm = () => {
                 type="button"
                 onClick={() => {
                   stopCamera();
-                  otpEnabled ? setStep(2) : setStep(1);
+                  setStep(1);
                 }}
                 className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-bold hover:bg-gray-700 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
               >
