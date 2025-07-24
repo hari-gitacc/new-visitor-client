@@ -11,7 +11,11 @@ const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL;
 
 const VisitorForm = () => {
   const [step, setStep] = useState(1);
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [personalPhoneNumber, setPersonalPhoneNumber] = useState("");
+  const [name, setName] = useState("");
+  const [companyPhoneNumber, setCompanyPhoneNumber] = useState("");
+  const [address, setAddress] = useState("");
+
   const [otp, setOtp] = useState("");
   const [file, setFile] = useState(null);
   const [confirmationResult, setConfirmationResult] = useState(null);
@@ -38,6 +42,7 @@ const VisitorForm = () => {
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [flashSupported, setFlashSupported] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const cameraTimeoutRef = useRef(null); // Ref for camera timeout
 
   const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
@@ -63,7 +68,8 @@ const VisitorForm = () => {
         );
         setAvailableCameras(videoDevices);
         console.log("Available cameras:", videoDevices.length);
-      } catch (error) {
+      }
+      catch (error) {
         console.error("Error checking available cameras:", error);
       }
     };
@@ -126,11 +132,14 @@ const VisitorForm = () => {
     };
   }, [otpEnabled]);
 
-  // Cleanup camera stream
+  // Cleanup camera stream and timeout
   useEffect(() => {
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
+      }
+      if (cameraTimeoutRef.current) {
+        clearTimeout(cameraTimeoutRef.current);
       }
     };
   }, [cameraStream]);
@@ -196,140 +205,135 @@ const VisitorForm = () => {
 
   // Camera Functions - with front/back switching and proper initialization
   const startCamera = async (preferredFacingMode = "environment") => {
-    try {
-      setMessage({ type: "", text: "" });
-      setVideoReady(false);
+    setMessage({ type: "info", text: "Starting camera..." });
+    setVideoReady(false);
+    setCameraMode(true); // Set camera mode to true to show loading overlay
 
-      if (cameraStream) {
-        cameraStream.getTracks().forEach((track) => track.stop());
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    setCapturedImage(null); // Clear any previously captured image
+
+    // Set a timeout for camera initialization
+    cameraTimeoutRef.current = setTimeout(() => {
+      if (!videoReady) {
+        setMessage({
+          type: "error",
+          text: "Camera initialization timed out. Please check permissions and try again.",
+        });
+        stopCamera(); // Stop attempts
       }
+    }, 15000); // 15 seconds timeout
 
-      console.log(`Starting camera with facing mode: ${preferredFacingMode}`);
+    console.log(`Attempting to start camera with preferred facing mode: ${preferredFacingMode}`);
 
-      // NEW: ABSOLUTE MOST LENIENT CONSTRAINTS FIRST
+    let stream;
+    try {
+      // Try preferred facing mode explicitly first
       let constraints = {
         video: {
           facingMode: { ideal: preferredFacingMode },
+          width: { ideal: 1280, min: 640 }, // Added some ideal resolution for better quality
+          height: { ideal: 720, min: 480 },
+          aspectRatio: { ideal: 16 / 9 },
         },
       };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log(`Camera stream obtained with preferred facing mode: ${preferredFacingMode}`);
 
-      let stream;
+      // Ensure facingMode state reflects what was successfully opened
+      const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
+      setFacingMode(actualFacingMode || preferredFacingMode); // Use actual or fallback to requested
+
+    } catch (initialError) {
+      console.error(`Initial attempt with preferred facing mode (${preferredFacingMode}) failed:`, initialError);
+      setMessage({ type: "info", text: `Preferred camera failed (${initialError.name}). Trying any available camera...` });
+
+      // Fallback: Try with most lenient constraints (any video stream)
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log("Camera stream obtained successfully with most lenient constraints");
-      } catch (error) {
-        console.error("Most lenient constraints failed, trying common ideal ones:", error);
-        setMessage({ type: "info", text: `Failed with lenient camera: ${error.name}. Trying common ideal settings...` });
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        console.log("Camera stream obtained with most lenient (video: true) constraints");
 
-        // Fallback 1: Common ideal resolution with preferred facing mode
-        constraints = {
-          video: {
-            facingMode: { ideal: preferredFacingMode },
-            width: { ideal: 1280, min: 640 }, // Reintroducing common resolutions
-            height: { ideal: 720, min: 480 },
-            aspectRatio: { ideal: 16 / 9 },
-          },
-        };
+        // Determine actual facing mode if successful with lenient constraint
+        const actualFacingMode = stream.getVideoTracks()[0].getSettings().facingMode;
+        setFacingMode(actualFacingMode || "unknown"); // Set to actual or 'unknown' if not found
+        setMessage({ type: "info", text: `Using ${actualFacingMode === 'environment' ? 'back' : actualFacingMode === 'user' ? 'front' : 'default'} camera.` });
+        setTimeout(() => setMessage({ type: "", text: "" }), 3000);
 
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log("Fallback 1 camera stream obtained successfully");
-        } catch (fallbackError) {
-          console.error("Fallback 1 camera constraints failed, trying any camera:", fallbackError);
-          setMessage({ type: "info", text: `Failed with specific camera: ${fallbackError.name}. Trying any available camera without specific facing...` });
-
-          // Fallback 2: Any available camera, no facing mode, no specific resolution
-          constraints = {
-            video: true, // Just request any video stream
-          };
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log("Fallback 2 (any camera) stream obtained successfully");
-          } catch (lastResortError) {
-            console.error("Last resort camera access failed:", lastResortError);
-            let errorMessage = "Failed to access any camera. ";
-            if (lastResortError.name === "NotAllowedError") {
-              errorMessage += "Please ALLOW camera permissions and try again.";
-            } else if (lastResortError.name === "NotFoundError") {
-              errorMessage += "No camera found on this device.";
-            } else if (lastResortError.name === "NotReadableError") {
-              errorMessage += "Camera is in use by another application.";
-            } else if (lastResortError.name === "OverconstrainedError") {
-              errorMessage += "Device camera does not meet requested capabilities.";
-            } else {
-              errorMessage += `An unknown error occurred: ${lastResortError.name}.`;
-            }
-            setMessage({ type: "error", text: errorMessage });
-            setCameraMode(false);
-            setVideoReady(false);
-            return; // Exit if all attempts fail
-          }
+      } catch (fallbackError) {
+        console.error("Fallback camera access failed:", fallbackError);
+        let errorMessage = "Failed to access any camera. ";
+        if (fallbackError.name === "NotAllowedError") {
+          errorMessage += "Please ALLOW camera permissions and try again.";
+        } else if (fallbackError.name === "NotFoundError") {
+          errorMessage += "No camera found on this device.";
+        } else if (fallbackError.name === "NotReadableError") {
+          errorMessage += "Camera is in use by another application.";
+        } else if (fallbackError.name === "OverconstrainedError") {
+          errorMessage += "Device camera does not meet requested capabilities.";
+        } else {
+          errorMessage += `An unexpected error occurred: ${fallbackError.name}.`;
         }
+        setMessage({ type: "error", text: errorMessage });
+        setCameraMode(false);
+        setVideoReady(false);
+        clearTimeout(cameraTimeoutRef.current);
+        return; // Exit if all attempts fail
       }
+    }
 
-      setCameraStream(stream);
-      setCameraMode(true);
-      setFacingMode(preferredFacingMode); // This will set based on the first *ideal* request
+    setCameraStream(stream);
 
-      // Check flash support
-      checkFlashSupport(stream);
+    // Check flash support (must be done after stream is obtained)
+    checkFlashSupport(stream);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded");
-          videoRef.current
-            .play()
-            .then(() => {
-              console.log("Video started playing");
-              setVideoReady(true);
-              const cameraType =
-                preferredFacingMode === "environment" ? "Back" : "Front";
-              setMessage({
-                type: "success",
-                text: `${cameraType} camera ready!`,
-              });
-              setTimeout(() => setMessage({ type: "", text: "" }), 2000);
-            })
-            .catch((error) => {
-              console.error("Error playing video:", error);
-              setMessage({
-                type: "error",
-                text: "Failed to start camera preview. Check permissions and try again.",
-              });
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+
+      videoRef.current.onloadedmetadata = () => {
+        console.log("Video metadata loaded");
+        videoRef.current
+          .play()
+          .then(() => {
+            console.log("Video started playing");
+            setVideoReady(true);
+            clearTimeout(cameraTimeoutRef.current); // Clear timeout on success
+            const currentCameraType = videoRef.current.srcObject.getVideoTracks()[0].getSettings().facingMode || 'default';
+            setMessage({
+              type: "success",
+              text: `${currentCameraType === 'environment' ? 'Back' : currentCameraType === 'user' ? 'Front' : 'Default'} camera ready!`,
             });
-        };
-        videoRef.current.onerror = (error) => {
-          console.error("Video element error:", error);
-          setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
-        };
-      }
-    } catch (finalError) {
-      console.error("Final camera access attempt failed (outer catch):", finalError);
-      let errorMessage = "Failed to access camera. ";
-      if (finalError.name === "NotAllowedError") {
-        errorMessage += "Please ALLOW camera permissions and try again.";
-      } else if (finalError.name === "NotFoundError") {
-        errorMessage += "No camera found on this device.";
-      } else if (finalError.name === "NotSupportedError") {
-        errorMessage += "Camera not supported on this browser.";
-      } else if (finalError.name === "NotReadableError") {
-        errorMessage += "Camera is in use by another application.";
-      } else if (finalError.name === "OverconstrainedError") {
-        errorMessage += "Device camera does not meet requested capabilities.";
-      } else {
-        errorMessage += `An unexpected error occurred: ${finalError.name}.`;
-      }
-      setMessage({ type: "error", text: errorMessage });
-      setCameraMode(false);
-      setVideoReady(false);
+            setTimeout(() => setMessage({ type: "", text: "" }), 2000);
+          })
+          .catch((error) => {
+            console.error("Error playing video:", error);
+            setMessage({
+              type: "error",
+              text: "Failed to start camera preview. Check permissions and try again.",
+            });
+            clearTimeout(cameraTimeoutRef.current);
+          });
+      };
+
+      videoRef.current.onerror = (error) => {
+        console.error("Video element error:", error);
+        setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
+        clearTimeout(cameraTimeoutRef.current);
+      };
     }
   };
 
 
   const switchCamera = async () => {
-    const newFacingMode = facingMode === "environment" ? "user" : "environment";
-    console.log(`Switching camera from ${facingMode} to ${newFacingMode}`);
+    // Determine the new facing mode based on what's currently active (might not be what was requested)
+    const currentSettings = cameraStream?.getVideoTracks()[0]?.getSettings();
+    const currentFacingMode = currentSettings?.facingMode || "environment"; // Default if not found
+
+    // Find the other facing mode
+    const newFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+
+    console.log(`Switching camera from ${currentFacingMode} to ${newFacingMode}`);
 
     // Reset flash when switching cameras
     setFlashEnabled(false);
@@ -345,7 +349,9 @@ const VisitorForm = () => {
   const stopCamera = () => {
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
+    }
+    if (cameraTimeoutRef.current) {
+        clearTimeout(cameraTimeoutRef.current);
     }
     setCameraMode(false);
     setCapturedImage(null);
@@ -353,6 +359,7 @@ const VisitorForm = () => {
     setFlashEnabled(false);
     setFlashSupported(false);
     setMessage({ type: "", text: "" });
+    setCameraStream(null); // Ensure stream is nullified to prevent re-use
   };
 
   const captureImage = () => {
@@ -371,7 +378,10 @@ const VisitorForm = () => {
       canvas.height = video.videoHeight;
 
       // For front camera, flip the image horizontally
-      if (facingMode === "user") {
+      // Get the actual current facing mode from the active stream's settings
+      const currentFacingModeFromStream = cameraStream?.getVideoTracks()[0]?.getSettings()?.facingMode || facingMode;
+
+      if (currentFacingModeFromStream === "user") {
         ctx.scale(-1, 1);
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         ctx.scale(-1, 1); // Reset scale
@@ -384,7 +394,7 @@ const VisitorForm = () => {
         (blob) => {
           if (blob) {
             const timestamp = Date.now();
-            const cameraType = facingMode === "environment" ? "back" : "front";
+            const cameraType = currentFacingModeFromStream === "environment" ? "back" : "front";
             const file = new File(
               [blob],
               `visiting_card_${cameraType}_${timestamp}.jpg`,
@@ -428,31 +438,47 @@ const VisitorForm = () => {
 
   // Handle proceed without OTP
   const handleProceedWithoutOtp = () => {
-    if (!isValidPhoneNumber(mobileNumber)) {
+    if (!isValidPhoneNumber(personalPhoneNumber)) {
       setMessage({
         type: "error",
-        text: "Please enter a valid 10-digit mobile number.",
+        text: "Please enter a valid 10-digit personal mobile number.",
       });
       return;
     }
+    // REMOVED: Name is no longer required here
+    // if (!name.trim()) {
+    //   setMessage({
+    //     type: "error",
+    //     text: "Please enter your name.",
+    //   });
+    //   return;
+    // }
 
     setStep(3);
   };
 
   const handleSendOtp = async () => {
-    if (!isValidPhoneNumber(mobileNumber)) {
+    if (!isValidPhoneNumber(personalPhoneNumber)) {
       setMessage({
         type: "error",
-        text: "Please enter a valid 10-digit mobile number.",
+        text: "Please enter a valid 10-digit personal mobile number.",
       });
       return;
     }
+    // REMOVED: Name is no longer required here
+    // if (!name.trim()) {
+    //   setMessage({
+    //     type: "error",
+    //     text: "Please enter your name.",
+    //   });
+    //   return;
+    // }
 
     setLoading(true);
     setMessage({ type: "", text: "" });
 
     try {
-      const formattedNumber = `+91${mobileNumber}`;
+      const formattedNumber = `+91${personalPhoneNumber}`;
       console.log("Sending OTP to:", formattedNumber);
 
       if (!recaptchaVerifier.current) {
@@ -551,7 +577,10 @@ const VisitorForm = () => {
     setMessage({ type: "", text: "" });
 
     const formData = new FormData();
-    formData.append("mobileNumber", mobileNumber);
+    formData.append("personalPhoneNumber", personalPhoneNumber);
+    formData.append("name", name);
+    formData.append("companyPhoneNumber", companyPhoneNumber);
+    formData.append("address", address);
     formData.append("visitingCard", file);
     formData.append("otpVerified", otpEnabled ? "true" : "false");
     formData.append("captureMethod", capturedImage ? "camera" : "upload");
@@ -576,7 +605,10 @@ const VisitorForm = () => {
 
       setTimeout(() => {
         setStep(1);
-        setMobileNumber("");
+        setPersonalPhoneNumber("");
+        setName("");
+        setCompanyPhoneNumber("");
+        setAddress("");
         setOtp("");
         setFile(null);
         setConfirmationResult(null);
@@ -655,34 +687,90 @@ const VisitorForm = () => {
       )}
       {step === 1 && (
         <div className="space-y-4">
-          <label
-            htmlFor="mobile"
-            className="block text-sm font-semibold text-gray-700 mb-1"
-          >
-            Enter Mobile Number
-          </label>
-          <div className="flex items-center">
-            <span className="inline-block bg-gray-200 p-3 rounded-l-md border border-r-0 border-gray-300 text-gray-600">
-              +91
-            </span>
+          <div>
+            <label
+              htmlFor="name"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Full Name (Optional)
+            </label>
+            <input
+              type="text"
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="John Doe"
+              // REMOVED: required attribute
+              disabled={loading}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="personalMobile"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Personal Mobile Number
+            </label>
+            <div className="flex items-center">
+              <span className="inline-block bg-gray-200 p-3 rounded-l-md border border-r-0 border-gray-300 text-gray-600">
+                +91
+              </span>
+              <input
+                type="tel"
+                id="personalMobile"
+                value={personalPhoneNumber}
+                onChange={(e) =>
+                  setPersonalPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))
+                }
+                className="w-full p-3 border border-gray-300 rounded-r-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+                placeholder="9876543210"
+                required // Keep required
+                disabled={loading}
+                maxLength="10"
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="companyPhone"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Company Phone Number (Optional)
+            </label>
             <input
               type="tel"
-              id="mobile"
-              value={mobileNumber}
-              onChange={(e) =>
-                setMobileNumber(e.target.value.replace(/\D/g, "").slice(0, 10))
-              }
-              className="w-full p-3 border border-gray-300 rounded-r-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
-              placeholder="9876543210"
+              id="companyPhone"
+              value={companyPhoneNumber}
+              onChange={(e) => setCompanyPhoneNumber(e.target.value.replace(/\D/g, ""))}
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="Optional"
               disabled={loading}
-              maxLength="10"
             />
+          </div>
+          <div>
+            <label
+              htmlFor="address"
+              className="block text-sm font-semibold text-gray-700 mb-1"
+            >
+              Address (Optional)
+            </label>
+            <textarea
+              id="address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              rows="3"
+              className="w-full p-3 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition duration-150 ease-in-out"
+              placeholder="Building/Street, City, State, Zip"
+              disabled={loading}
+            ></textarea>
           </div>
 
           {otpEnabled ? (
             <button
               onClick={handleSendOtp}
-              disabled={loading || !isValidPhoneNumber(mobileNumber)}
+              // REMOVED: !name.trim() from disabled condition
+              disabled={loading || !isValidPhoneNumber(personalPhoneNumber)}
               className="w-full bg-indigo-700 text-white py-3 rounded-lg font-bold hover:bg-indigo-800 disabled:bg-indigo-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               {loading ? "Sending..." : "Send OTP"}
@@ -690,7 +778,8 @@ const VisitorForm = () => {
           ) : (
             <button
               onClick={handleProceedWithoutOtp}
-              disabled={loading || !isValidPhoneNumber(mobileNumber)}
+              // REMOVED: !name.trim() from disabled condition
+              disabled={loading || !isValidPhoneNumber(personalPhoneNumber)}
               className="w-full bg-green-700 text-white py-3 rounded-lg font-bold hover:bg-green-800 disabled:bg-green-400 transition duration-200 ease-in-out transform hover:scale-105 shadow-md"
             >
               {loading ? "Processing..." : "Proceed Without OTP"}
@@ -842,31 +931,30 @@ const VisitorForm = () => {
                 </div>
 
                 {/* Flash indicator */}
-{flashSupported && facingMode === 'environment' && flashEnabled && (
-  <div className="absolute top-2 right-2 bg-yellow-500 bg-opacity-80 text-white px-2 py-1 rounded text-xs">
-    Flash ON
-  </div>
-)}
-
-                {/* Camera Controls */}
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
-                  {/* Flash Button */}
-                  {flashSupported && facingMode === 'environment' && (
+                {facingMode === 'environment' && ( // Only show flash control for back camera
                   <button
                     onClick={toggleFlash}
-                    className={`p-3 rounded-full transition duration-300 flex items-center justify-center ${
+                    disabled={!flashSupported} // Disable if not supported
+                    className={`absolute top-2 right-2 p-3 rounded-full transition duration-300 flex items-center justify-center ${
                       flashEnabled
                         ? "bg-yellow-500 bg-opacity-90 text-white"
                         : "bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30"
-                    }`}
-                    title={`${flashEnabled ? "Turn off" : "Turn on"} flash`}
+                    } ${!flashSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={`${flashSupported ? (flashEnabled ? "Turn off flash" : "Turn on flash") : "Flash not supported"}`}
                   >
-                    <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
+                    {flashEnabled ? (
+                      <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
+                    ) : (
+                      <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
+                    )}
                   </button>
-                   )}
+                )}
 
+
+                {/* Camera Controls */}
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center space-x-2">
                   {/* Switch Camera Button */}
-                  {availableCameras.length >= 1 && (
+                  {availableCameras.length > 1 && ( // Only show if more than one camera is available
                     <button
                       onClick={switchCamera}
                       className="
@@ -1031,8 +1119,8 @@ const VisitorForm = () => {
             </div>
           </form>
         </div>
-       )}
-      </div>
+      )}
+    </div>
   );
 };
 

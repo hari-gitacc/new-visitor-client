@@ -22,13 +22,13 @@ const AdminLogin = () => {
         setMessage({ type: '', text: '' });
 
         try {
-            const response = await axios.post(`${BACKEND_API_URL}/admin/login`, { // Use environment variable
+            const response = await axios.post(`${BACKEND_API_URL}/admin/login`, {
                 username,
                 password,
             });
 
             const { adminApiKey } = response.data;
-            localStorage.setItem('adminApiKey', adminApiKey);
+            localStorage.setItem('adminApiKey', adminApiKey); // Back to storing adminApiKey
             setMessage({ type: 'success', text: 'Login successful! Redirecting...' });
 
             setTimeout(() => {
