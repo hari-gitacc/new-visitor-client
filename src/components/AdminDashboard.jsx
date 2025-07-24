@@ -169,7 +169,6 @@ const AdminDashboard = () => {
 
             try {
                 const response = await axios.get(`${BACKEND_API_URL}/admin/visitors`, {
-                const response = await axios.get(`${BACKEND_API_URL}/admin/visitors`, {
                     headers: {
                         'Admin-API-Key': adminApiKey
                     }
@@ -459,6 +458,5 @@ const AdminDashboard = () => {
         </div>
     );
 };
-
 
 export default AdminDashboard;

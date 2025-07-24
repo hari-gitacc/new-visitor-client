@@ -43,7 +43,6 @@ const VisitorForm = () => {
   const [flashSupported, setFlashSupported] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
   const cameraTimeoutRef = useRef(null); // Ref for camera timeout
-  const cameraTimeoutRef = useRef(null); // Ref for camera timeout
 
   const recaptchaVerifier = useRef(null);
   const videoRef = useRef(null);
@@ -69,8 +68,6 @@ const VisitorForm = () => {
         );
         setAvailableCameras(videoDevices);
         console.log("Available cameras:", videoDevices.length);
-      }
-      catch (error) {
       }
       catch (error) {
         console.error("Error checking available cameras:", error);
@@ -136,14 +133,10 @@ const VisitorForm = () => {
   }, [otpEnabled]);
 
   // Cleanup camera stream and timeout
-  // Cleanup camera stream and timeout
   useEffect(() => {
     return () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop());
-      }
-      if (cameraTimeoutRef.current) {
-        clearTimeout(cameraTimeoutRef.current);
       }
       if (cameraTimeoutRef.current) {
         clearTimeout(cameraTimeoutRef.current);
@@ -215,28 +208,7 @@ const VisitorForm = () => {
     setMessage({ type: "info", text: "Starting camera..." });
     setVideoReady(false);
     setCameraMode(true); // Set camera mode to true to show loading overlay
-    setMessage({ type: "info", text: "Starting camera..." });
-    setVideoReady(false);
-    setCameraMode(true); // Set camera mode to true to show loading overlay
 
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
-    setCapturedImage(null); // Clear any previously captured image
-
-    // Set a timeout for camera initialization
-    cameraTimeoutRef.current = setTimeout(() => {
-      if (!videoReady) {
-        setMessage({
-          type: "error",
-          text: "Camera initialization timed out. Please check permissions and try again.",
-        });
-        stopCamera(); // Stop attempts
-      }
-    }, 15000); // 15 seconds timeout
-
-    console.log(`Attempting to start camera with preferred facing mode: ${preferredFacingMode}`);
     if (cameraStream) {
       cameraStream.getTracks().forEach((track) => track.stop());
       setCameraStream(null);
@@ -312,46 +284,10 @@ const VisitorForm = () => {
     }
 
     setCameraStream(stream);
-    setCameraStream(stream);
 
     // Check flash support (must be done after stream is obtained)
     checkFlashSupport(stream);
-    // Check flash support (must be done after stream is obtained)
-    checkFlashSupport(stream);
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-
-      videoRef.current.onloadedmetadata = () => {
-        console.log("Video metadata loaded");
-        videoRef.current
-          .play()
-          .then(() => {
-            console.log("Video started playing");
-            setVideoReady(true);
-            clearTimeout(cameraTimeoutRef.current); // Clear timeout on success
-            const currentCameraType = videoRef.current.srcObject.getVideoTracks()[0].getSettings().facingMode || 'default';
-            setMessage({
-              type: "success",
-              text: `${currentCameraType === 'environment' ? 'Back' : currentCameraType === 'user' ? 'Front' : 'Default'} camera ready!`,
-            });
-            setTimeout(() => setMessage({ type: "", text: "" }), 2000);
-          })
-          .catch((error) => {
-            console.error("Error playing video:", error);
-            setMessage({
-              type: "error",
-              text: "Failed to start camera preview. Check permissions and try again.",
-            });
-            clearTimeout(cameraTimeoutRef.current);
-          });
-      };
-
-      videoRef.current.onerror = (error) => {
-        console.error("Video element error:", error);
-        setMessage({ type: "error", text: "Camera preview error: Could not load stream." });
-        clearTimeout(cameraTimeoutRef.current);
-      };
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
 
@@ -390,14 +326,6 @@ const VisitorForm = () => {
 
 
   const switchCamera = async () => {
-    // Determine the new facing mode based on what's currently active (might not be what was requested)
-    const currentSettings = cameraStream?.getVideoTracks()[0]?.getSettings();
-    const currentFacingMode = currentSettings?.facingMode || "environment"; // Default if not found
-
-    // Find the other facing mode
-    const newFacingMode = currentFacingMode === "environment" ? "user" : "environment";
-
-    console.log(`Switching camera from ${currentFacingMode} to ${newFacingMode}`);
     // Determine the new facing mode based on what's currently active (might not be what was requested)
     const currentSettings = cameraStream?.getVideoTracks()[0]?.getSettings();
     const currentFacingMode = currentSettings?.facingMode || "environment"; // Default if not found
@@ -454,10 +382,6 @@ const VisitorForm = () => {
       const currentFacingModeFromStream = cameraStream?.getVideoTracks()[0]?.getSettings()?.facingMode || facingMode;
 
       if (currentFacingModeFromStream === "user") {
-      // Get the actual current facing mode from the active stream's settings
-      const currentFacingModeFromStream = cameraStream?.getVideoTracks()[0]?.getSettings()?.facingMode || facingMode;
-
-      if (currentFacingModeFromStream === "user") {
         ctx.scale(-1, 1);
         ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
         ctx.scale(-1, 1); // Reset scale
@@ -470,7 +394,6 @@ const VisitorForm = () => {
         (blob) => {
           if (blob) {
             const timestamp = Date.now();
-            const cameraType = currentFacingModeFromStream === "environment" ? "back" : "front";
             const cameraType = currentFacingModeFromStream === "environment" ? "back" : "front";
             const file = new File(
               [blob],
@@ -1013,13 +936,9 @@ const VisitorForm = () => {
                     onClick={toggleFlash}
                     disabled={!flashSupported} // Disable if not supported
                     className={`absolute top-2 right-2 p-3 rounded-full transition duration-300 flex items-center justify-center ${
-                    disabled={!flashSupported} // Disable if not supported
-                    className={`absolute top-2 right-2 p-3 rounded-full transition duration-300 flex items-center justify-center ${
                       flashEnabled
                         ? "bg-yellow-500 bg-opacity-90 text-white"
                         : "bg-white bg-opacity-20 backdrop-blur-sm text-white hover:bg-opacity-30"
-                    } ${!flashSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    title={`${flashSupported ? (flashEnabled ? "Turn off flash" : "Turn on flash") : "Flash not supported"}`}
                     } ${!flashSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
                     title={`${flashSupported ? (flashEnabled ? "Turn off flash" : "Turn on flash") : "Flash not supported"}`}
                   >
@@ -1028,13 +947,7 @@ const VisitorForm = () => {
                     ) : (
                       <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
                     )}
-                    {flashEnabled ? (
-                      <Zap className="w-5 h-5 sm:w-6 sm:h-6" />
-                    ) : (
-                      <ZapOff className="w-5 h-5 sm:w-6 sm:h-6" />
-                    )}
                   </button>
-                )}
                 )}
 
 
@@ -1206,8 +1119,6 @@ const VisitorForm = () => {
             </div>
           </form>
         </div>
-      )}
-    </div>
       )}
     </div>
   );
