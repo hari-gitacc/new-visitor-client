@@ -10,7 +10,7 @@ import * as XLSX from 'xlsx';
 // Get backend URL from environment variable
 const BACKEND_API_URL = 'https://new-visitor-backend.onrender.com/api';
 
-// Helper component for the Edit Modal
+// Helper component for the Edit Modal (No changes needed here for responsiveness)
 const EditVisitorModal = ({ visitor, onClose, onSave, isSaving }) => {
     const [editedData, setEditedData] = useState(visitor);
     const [localError, setLocalError] = useState(null);
@@ -149,6 +149,10 @@ const AdminDashboard = () => {
     const [error, setError] = useState(null);
     const navigate = useNavigate();
 
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage] = useState(10); // You can adjust this number
+
     // States for image modal
     const [showImageModal, setShowImageModal] = useState(false);
     const [modalImageUrl, setModalImageUrl] = useState('');
@@ -173,7 +177,9 @@ const AdminDashboard = () => {
                         'Admin-API-Key': adminApiKey
                     }
                 });
-                setVisitors(response.data.data);
+                // Sort visitors by creation date, newest first
+                const sortedVisitors = response.data.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                setVisitors(sortedVisitors);
             } catch (err) {
                 console.error('Error fetching visitors:', err);
                 if (err.response && (err.response.status === 401 || err.response.status === 403)) {
@@ -219,6 +225,10 @@ const AdminDashboard = () => {
                 });
                 setVisitors(prevVisitors => prevVisitors.filter(visitor => visitor._id !== visitorId));
                 setError(null); // Clear any previous errors
+                // If the current page becomes empty after deletion, go to the previous page
+                if (visitors.length - 1 <= (currentPage - 1) * itemsPerPage && currentPage > 1) {
+                    setCurrentPage(prev => prev - 1);
+                }
             } catch (err) {
                 console.error('Error deleting visitor:', err);
                 setError(err.response?.data?.message || 'Failed to delete visitor. Please try again.');
@@ -307,6 +317,34 @@ const AdminDashboard = () => {
         XLSX.writeFile(wb, "admin-data.xlsx");
     };
 
+    // Pagination calculations
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentVisitors = visitors.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(visitors.length / itemsPerPage);
+
+    const paginate = (pageNumber) => {
+        if (pageNumber >= 1 && pageNumber <= totalPages) {
+            setCurrentPage(pageNumber);
+        }
+    };
+
+    // Generate page numbers for pagination control
+    const pageNumbers = [];
+    // Only show a limited number of page numbers around the current page
+    const maxPageNumbersToShow = 5; // e.g., show current page, 2 before, 2 after
+    let startPage = Math.max(1, currentPage - Math.floor(maxPageNumbersToShow / 2));
+    let endPage = Math.min(totalPages, startPage + maxPageNumbersToShow - 1);
+
+    // Adjust startPage if we hit the end of pages
+    if (endPage - startPage + 1 < maxPageNumbersToShow) {
+        startPage = Math.max(1, endPage - maxPageNumbersToShow + 1);
+    }
+
+
+    for (let i = startPage; i <= endPage; i++) {
+        pageNumbers.push(i);
+    }
 
     if (loading) {
         return (
@@ -327,10 +365,17 @@ const AdminDashboard = () => {
     }
 
     return (
-        <div className="p-4 sm:p-6 bg-gray-100 min-h-screen">
-            <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-4 sm:p-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center mb-6 space-y-4 sm:space-y-0">
+        // Reduced outer vertical padding, removed horizontal padding
+        <div className="py-4 px-0 sm:py-6 bg-gray-100 min-h-screen">
+            {/* Reduced inner padding */}
+            <div className="max-w-7xl mx-auto bg-white rounded-lg shadow-lg p-2 sm:p-4">
+                {/* Reduced margin-bottom for header */}
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-4 space-y-4 sm:space-y-0">
                     <h1 className="text-xl sm:text-3xl font-bold text-gray-800 text-center sm:text-left">Admin Dashboard</h1>
+                    {/* Total Visitor Count */}
+                    <div className="text-md sm:text-lg font-semibold text-gray-700">
+                        Total Visitors: <span className="text-indigo-600">{visitors.length}</span>
+                    </div>
                     <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
                         <button
                             onClick={handleDownloadExcel}
@@ -350,74 +395,187 @@ const AdminDashboard = () => {
                 {visitors.length === 0 ? (
                     <p className="text-center text-gray-600 text-lg py-10">No visitor data available.</p>
                 ) : (
-                    <div className="overflow-x-auto rounded-lg shadow-md border border-gray-200">
-                        <table className="min-w-full bg-white divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Name</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Personal Phone</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Company Phone</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px] md:px-6">Address</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">OTP Verified</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Capture Method</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Created At</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Updated At</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px] md:px-6">Visiting Card</th>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                                {visitors.map((visitor) => (
-                                    <tr key={visitor._id} className="hover:bg-gray-50">
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 md:px-6">{visitor.name || 'N/A'}</td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 md:px-6">{visitor.personalPhoneNumber || 'N/A'}</td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">{visitor.companyPhoneNumber || 'N/A'}</td>
-                                        <td className="px-3 py-4 whitespace-pre-wrap text-sm text-gray-500 md:px-6">{visitor.address || 'N/A'}</td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">
-                                            {visitor.otpVerified ? 'Yes' : 'No'}
-                                        </td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">{visitor.captureMethod}</td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">
-                                            {visitor.createdAt ? format(new Date(visitor.createdAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'} {/* CHANGED: Date and time format */}
-                                        </td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">
-                                            {visitor.updatedAt ? format(new Date(visitor.updatedAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'} {/* CHANGED: Date and time format */}
-                                        </td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">
-                                            {visitor.visitingCardImageUrl ? (
-                                                <button
-                                                    onClick={() => openImageModal(visitor.visitingCardImageUrl)}
-                                                    className="text-indigo-600 hover:text-indigo-900 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 rounded"
-                                                >
-                                                    View
-                                                </button>
-                                            ) : 'N/A'}
-                                        </td>
-                                        <td className="px-3 py-4 whitespace-nowrap text-sm font-medium md:px-6">
-                                            <div className="flex space-x-2 items-center">
-                                                <button
-                                                    onClick={() => handleOpenEditModal(visitor)}
-                                                    className="text-indigo-600 hover:text-indigo-900"
-                                                    title="Edit Visitor"
-                                                    disabled={isSavingEdit}
-                                                >
-                                                    <Edit className="w-5 h-5" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteClick(visitor._id)}
-                                                    className="text-red-600 hover:text-red-900"
-                                                    title="Delete Visitor"
-                                                    disabled={isSavingEdit}
-                                                >
-                                                    <Trash2 className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        </td>
+                    <>
+                        {/* The table wrapper - hidden on small screens, shown on medium and up */}
+                        <div className="overflow-x-auto rounded-lg shadow-md border border-gray-200 hidden md:block mt-4">
+                            <table className="min-w-full bg-white divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        {/* New column for serial number */}
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[50px]">No.</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Name</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Personal Phone</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Company Phone</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px] md:px-6">Address</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">OTP Verified</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Capture Method</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Created At</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Updated At</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[80px] md:px-6">Visiting Card</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Actions</th>
                                     </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                    {currentVisitors.map((visitor, index) => ( // Added index here
+                                        <tr key={visitor._id} className="hover:bg-gray-50">
+                                            {/* Serial number for desktop table */}
+                                            <td className="px-3 py-4 text-sm font-medium text-gray-900 md:px-6">
+                                                {indexOfFirstItem + index + 1}
+                                            </td>
+                                            <td className="px-3 py-4 text-sm font-medium text-gray-900 md:px-6">{visitor.name || 'N/A'}</td>
+                                            <td className="px-3 py-4 text-sm font-medium text-gray-900 md:px-6">{visitor.personalPhoneNumber || 'N/A'}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 md:px-6">{visitor.companyPhoneNumber || 'N/A'}</td>
+                                            <td className="px-3 py-4 whitespace-pre-wrap text-sm text-gray-500 md:px-6">{visitor.address || 'N/A'}</td>
+                                            <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">
+                                                {visitor.otpVerified ? 'Yes' : 'No'}
+                                            </td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 md:px-6">{visitor.captureMethod}</td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 md:px-6">
+                                                {visitor.createdAt ? format(new Date(visitor.createdAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'}
+                                            </td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 md:px-6">
+                                                {visitor.updatedAt ? format(new Date(visitor.updatedAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'}
+                                            </td>
+                                            <td className="px-3 py-4 text-sm text-gray-500 md:px-6">
+                                                {visitor.visitingCardImageUrl ? (
+                                                    <button
+                                                        onClick={() => openImageModal(visitor.visitingCardImageUrl)}
+                                                        className="text-indigo-600 hover:text-indigo-900 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 rounded"
+                                                    >
+                                                        View
+                                                    </button>
+                                                ) : 'N/A'}
+                                            </td>
+                                            <td className="px-3 py-4 whitespace-nowrap text-sm font-medium md:px-6">
+                                                <div className="flex space-x-2 items-center">
+                                                    <button
+                                                        onClick={() => handleOpenEditModal(visitor)}
+                                                        className="text-indigo-600 hover:text-indigo-900"
+                                                        title="Edit Visitor"
+                                                        disabled={isSavingEdit}
+                                                    >
+                                                        <Edit className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteClick(visitor._id)}
+                                                        className="text-red-600 hover:text-red-900"
+                                                        title="Delete Visitor"
+                                                        disabled={isSavingEdit}
+                                                    >
+                                                        <Trash2 className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Card Layout for Mobile Screens (visible on small, hidden on medium and up) */}
+                        <div className="md:hidden space-y-4 mt-4">
+                            {currentVisitors.map((visitor, index) => ( // Added index here
+                                <div key={visitor._id} className="bg-white rounded-lg shadow p-4 border border-gray-200 space-y-2">
+                                    {/* Serial number for mobile card */}
+                                    <div className="text-sm font-semibold text-gray-700 pb-2 border-b border-gray-100">
+                                        No. {indexOfFirstItem + index + 1}
+                                    </div>
+                                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100">
+                                        <h3 className="font-bold text-lg text-gray-800">{visitor.name || 'N/A'}</h3>
+                                        <div className="flex space-x-2 items-center">
+                                            <button
+                                                onClick={() => handleOpenEditModal(visitor)}
+                                                className="text-indigo-600 hover:text-indigo-900 p-1 rounded-full bg-gray-50"
+                                                title="Edit Visitor"
+                                                disabled={isSavingEdit}
+                                            >
+                                                <Edit className="w-5 h-5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteClick(visitor._id)}
+                                                className="text-red-600 hover:text-red-900 p-1 rounded-full bg-gray-50"
+                                                title="Delete Visitor"
+                                                disabled={isSavingEdit}
+                                            >
+                                                <Trash2 className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                        <span className="font-semibold">Personal Phone:</span> {visitor.personalPhoneNumber || 'N/A'}
+                                    </div>
+                                    {visitor.companyPhoneNumber && (
+                                        <div className="text-sm text-gray-700">
+                                            <span className="font-semibold">Company Phone:</span> {visitor.companyPhoneNumber}
+                                        </div>
+                                    )}
+                                    {visitor.address && (
+                                        <div className="text-sm text-gray-700">
+                                            <span className="font-semibold">Address:</span> {visitor.address}
+                                        </div>
+                                    )}
+                                    <div className="text-sm text-gray-700">
+                                        <span className="font-semibold">OTP Verified:</span> {visitor.otpVerified ? 'Yes' : 'No'}
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                        <span className="font-semibold">Capture Method:</span> {visitor.captureMethod}
+                                    </div>
+                                    <div className="text-sm text-gray-700">
+                                        <span className="font-semibold">Created At:</span> {visitor.createdAt ? format(new Date(visitor.createdAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'}
+                                    </div>
+                                    {visitor.updatedAt && visitor.updatedAt !== visitor.createdAt && (
+                                        <div className="text-sm text-gray-700">
+                                            <span className="font-semibold">Updated At:</span> {visitor.updatedAt ? format(new Date(visitor.updatedAt), 'dd-MM-yyyy hh:mm:ss a') : 'N/A'}
+                                    </div>
+                                )}
+                                    {visitor.visitingCardImageUrl && (
+                                        <div className="text-sm text-gray-700">
+                                            <span className="font-semibold">Visiting Card:</span>
+                                            <button
+                                                onClick={() => openImageModal(visitor.visitingCardImageUrl)}
+                                                className="ml-2 text-indigo-600 hover:text-indigo-900 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 rounded"
+                                            >
+                                                View Image
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex justify-center md:justify-end items-center space-x-2 mt-6">
+                                <button
+                                    onClick={() => paginate(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Previous
+                                </button>
+                                {pageNumbers.map(number => (
+                                    <button
+                                        key={number}
+                                        onClick={() => paginate(number)}
+                                        className={`px-3 py-1 text-sm rounded-md ${
+                                            currentPage === number
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {number}
+                                    </button>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                <button
+                                    onClick={() => paginate(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 text-sm rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
 
