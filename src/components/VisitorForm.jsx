@@ -159,10 +159,7 @@ const VisitorForm = () => {
       return false;
     } catch (error) {
       console.error("Error sending welcome email:", error);
-      setMessage({
-        type: "error",
-        text: "Failed to send welcome email, but you can continue.",
-      });
+ 
       setTimeout(() => setMessage({ type: "", text: "" }), 3000);
       return false;
     } finally {
