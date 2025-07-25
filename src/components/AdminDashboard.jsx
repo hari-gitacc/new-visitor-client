@@ -324,7 +324,11 @@ const AdminDashboard = () => {
                 </div>
             </div>
         );
+
     }
+
+    console.log('Visitors data:', visitors); // Debugging line to check fetched data
+    
 
     return (
         <div className="p-4 sm:p-6 bg-gray-100 min-h-screen">
@@ -347,6 +351,8 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
+                
+
                 {visitors.length === 0 ? (
                     <p className="text-center text-gray-600 text-lg py-10">No visitor data available.</p>
                 ) : (
@@ -354,6 +360,7 @@ const AdminDashboard = () => {
                         <table className="min-w-full bg-white divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
+                                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Company Name</th>
                                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[100px] md:px-6">Name</th>
                                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Personal Phone</th>
                                     <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px] md:px-6">Company Phone</th>
@@ -369,6 +376,7 @@ const AdminDashboard = () => {
                             <tbody className="divide-y divide-gray-200">
                                 {visitors.map((visitor) => (
                                     <tr key={visitor._id} className="hover:bg-gray-50">
+                                         <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 md:px-6">{visitor.companyName || 'N/A'}</td>
                                         <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 md:px-6">{visitor.name || 'N/A'}</td>
                                         <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900 md:px-6">{visitor.personalPhoneNumber || 'N/A'}</td>
                                         <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500 md:px-6">{visitor.companyPhoneNumber || 'N/A'}</td>
